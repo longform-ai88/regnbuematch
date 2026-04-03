@@ -5,7 +5,6 @@ import os
 load_dotenv()
 
 import json
-import os
 
 PAID_EMAILS_FILE = "paid_emails.json"
 
@@ -49,8 +48,7 @@ import streamlit as st
 import stripe
 import random
 import string
-import smtplib
-from typing import List, Dict
+import requests
 
 st.markdown("<style>label,input,h1,h2,h3{color:black!important} input::placeholder{color:#666!important} .stTextInput input{background:white!important;color:black!important}</style>", unsafe_allow_html=True)
 
@@ -143,7 +141,7 @@ if st.session_state.mode == "register":
 			st.session_state.verification_email = email
 			st.session_state.email_verified = False
 
-			result = send_verification_email(email, code)
+			result = send_verification_code(email, code)
 
 			if result is True:
 				st.success("Kode sendt til e-post 📧")
