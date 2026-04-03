@@ -4,6 +4,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Regnbuematch</title>
+  <meta name="theme-color" content="#ff7eb3" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="Regnbuematch" />
+
+<link rel="manifest" href="/manifest.json" />
+<link rel="apple-touch-icon" href="/icons/icon-192.png" />
+<link rel="icon" href="/icons/icon-192.png" />
   <style>
     :root {
       --pink: #ff7eb3;
@@ -602,7 +610,13 @@
     function goToCheckout() {
       alert("Checkout kommer snart");
     }
-
+    <script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(console.error);
+    });
+  }
+</script>
     function showWaitlist(event) {
       event.preventDefault();
       signup.classList.add("active");
