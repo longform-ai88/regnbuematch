@@ -50,7 +50,54 @@ import random
 import string
 import requests
 
-st.markdown("<style>label,input,h1,h2,h3{color:black!important} input::placeholder{color:#666!important} .stTextInput input{background:white!important;color:black!important}</style>", unsafe_allow_html=True)
+st.markdown("""
+<style>
+label, input, h1, h2, h3 { color: black !important; }
+input::placeholder, textarea::placeholder { color: #666 !important; }
+.stTextInput input, .stTextArea textarea, .stNumberInput input, .stSelectbox div[data-baseweb=\"select\"] > div {
+	background: white !important;
+	color: black !important;
+	border-radius: 12px !important;
+}
+.stButton > button, .stLinkButton > a {
+	width: 100%;
+	border-radius: 14px !important;
+	min-height: 48px;
+	font-size: 1rem;
+	font-weight: 600;
+}
+.stImage img {
+	max-width: 100%;
+	height: auto;
+	border-radius: 12px;
+}
+.block-container {
+	padding-top: 1rem !important;
+	padding-bottom: 4rem !important;
+	max-width: 760px;
+}
+@media (max-width: 768px) {
+	.block-container {
+		padding-left: 0.8rem !important;
+		padding-right: 0.8rem !important;
+		padding-top: 0.6rem !important;
+	}
+	h1 { font-size: 1.8rem !important; }
+	h2 { font-size: 1.35rem !important; }
+	.stTabs [data-baseweb=\"tab-list\"] {
+		gap: 4px;
+		flex-wrap: wrap;
+	}
+	.stTabs [data-baseweb=\"tab\"] {
+		padding: 0.45rem 0.7rem;
+		font-size: 0.9rem;
+	}
+	section[data-testid=\"stSidebar\"] {
+		width: 82vw !important;
+	}
+}
+</style>
+""", unsafe_allow_html=True)
 
 if "users" not in st.session_state:
 	users_loaded = load_users()
@@ -261,8 +308,13 @@ if not st.session_state.logged_in and st.session_state.mode == 'main':
 	if st.button("✨ Lag Profil / Kom i gang", key="create_profile_btn"):
 		st.session_state.mode = 'register'
 st.title("🌈 RegnbueMatch")
-st.markdown("[📲 Åpne/installere PWA-versjonen](/app/static/index.html)")
-st.caption("På mobil kan du bruke nettleserens meny for å legge appen til på startskjermen.")
+col1, col2 = st.columns(2)
+with col1:
+	st.link_button("📲 Installer appen", "/app/static/index.html", use_container_width=True)
+with col2:
+	st.link_button("🌍 Åpne webapp", "/", use_container_width=True)
+st.caption("På mobil kan du bruke ‘Legg til på startskjerm’, og på PC kan du velge ‘Installer app’ i nettleseren.")
+st.info("Tips: PWA-versjonen gir en mer app-lignende opplevelse på mobil og skrivebord.")
 
 # Nullstill mode til 'main' etter utlogging eller etter registreringsflyt
 if not st.session_state.logged_in and st.session_state.mode != 'main':
