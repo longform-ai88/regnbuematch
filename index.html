@@ -3,7 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Regnbuematch</title>
+  <title>RegnbueMatch Pro</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#ff7eb3" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="RegnbueMatch Pro" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <style>
     :root {
       --pink: #ff7eb3;
@@ -325,7 +331,7 @@
 </head>
 <body>
   <div class="app">
-    <div class="header">Regnbuematch 🌈</div>
+    <div class="header">RegnbueMatch Pro 🌈</div>
 
     <div class="stack">
       <div class="card back" id="backCard"></div>
@@ -363,6 +369,20 @@
       <button onclick="window.location.href='https://buy.stripe.com/aFaaEY3T73Um2Um52DfnO04'">
   Start Pro – 199 kr/mnd
 </button>
+      <a href="#" class="small-link" onclick="showWaitlist(event)">Bli med på ventelisten</a>
+    </div>
+  </div>
+
+  <div class="signup" id="signup">
+    <div class="signup-box">
+      <h2>Venteliste 🌈</h2>
+      <p>Skriv inn e-posten din, så varsler vi deg når appen er klar.</p>
+      <form id="form">
+        <input type="email" id="emailInput" placeholder="din@epost.no" required />
+        <button type="submit" id="joinBtn">Bli med</button>
+      </form>
+      <div class="message" id="message"></div>
+      <a href="#" class="small-link" onclick="document.getElementById('signup').classList.remove('active'); return false;">Lukk</a>
     </div>
   </div>
 
@@ -594,7 +614,13 @@
       signup.classList.add("active");
     }
 
-    render();    
+    render();
+
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/sw.js");
+      });
+    }
   </script>
 </body>
 </html>
