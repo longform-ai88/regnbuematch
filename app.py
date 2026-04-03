@@ -52,6 +52,8 @@ import string
 import smtplib
 from typing import List, Dict
 
+st.markdown("<style>label,input,h1,h2,h3{color:black!important} input::placeholder{color:#666!important} .stTextInput input{background:white!important;color:black!important}</style>", unsafe_allow_html=True)
+
 if "users" not in st.session_state:
 	users_loaded = load_users()
 	if not users_loaded:
