@@ -610,13 +610,11 @@
     function goToCheckout() {
       alert("Checkout kommer snart");
     }
-    <script>
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js').catch(console.error);
-    });
-  }
-</script>
+        if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(console.error);
+      });
+    }
     function showWaitlist(event) {
       event.preventDefault();
       signup.classList.add("active");
