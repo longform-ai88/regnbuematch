@@ -261,7 +261,8 @@ if not st.session_state.logged_in and st.session_state.mode == 'main':
 	if st.button("✨ Lag Profil / Kom i gang", key="create_profile_btn"):
 		st.session_state.mode = 'register'
 st.title("🌈 RegnbueMatch")
-
+st.markdown("[📲 Åpne/installere PWA-versjonen](/app/static/index.html)")
+st.caption("På mobil kan du bruke nettleserens meny for å legge appen til på startskjermen.")
 
 # Nullstill mode til 'main' etter utlogging eller etter registreringsflyt
 if not st.session_state.logged_in and st.session_state.mode != 'main':

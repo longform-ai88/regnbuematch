@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#a259c6" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="RegnbueMatch" />
+  <title>RegnbueMatch PWA</title>
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+  <style>
+    :root {
+      --pink: #ff4fa3;
+      --purple: #a259c6;
+      --blue: #4b8bff;
+      --text: #ffffff;
+      --card: rgba(255,255,255,0.14);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: Arial, sans-serif;
+      color: var(--text);
+      background: linear-gradient(135deg, var(--pink), var(--purple), var(--blue));
+      padding: 16px;
+    }
+    .card {
+      width: min(100%, 480px);
+      background: var(--card);
+      border: 1px solid rgba(255,255,255,0.22);
+      backdrop-filter: blur(12px);
+      border-radius: 24px;
+      padding: 28px;
+      text-align: center;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.18);
+    }
+    .logo {
+      font-size: 4rem;
+      margin-bottom: 8px;
+    }
+    h1 { margin: 0 0 10px; }
+    p { line-height: 1.5; }
+    .actions {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-top: 20px;
+    }
+    a, button {
+      border: none;
+      border-radius: 999px;
+      padding: 12px 18px;
+      font-size: 1rem;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .primary {
+      background: #fff;
+      color: #7b2cbf;
+      font-weight: 700;
+    }
+    .secondary {
+      background: rgba(255,255,255,0.18);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.3);
+    }
+    .hint {
+      margin-top: 18px;
+      opacity: 0.95;
+      font-size: 0.95rem;
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="logo">🌈</div>
+    <h1>RegnbueMatch</h1>
+    <p>Installer appen som en PWA for rask tilgang fra mobil og skrivebord.</p>
+    <div class="actions">
+      <a class="primary" href="/">Åpne appen</a>
+      <button id="installBtn" class="secondary" hidden>Installer appen</button>
+    </div>
+    <p class="hint">Hvis knappen ikke vises, bruk nettleserens meny og velg <b>Installer app</b> eller <b>Legg til på startskjerm</b>.</p>
+  </main>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('./sw.js').catch(console.error);
+      });
+    }
+
+    let deferredPrompt;
+    const installBtn = document.getElementById('installBtn');
+
+    window.addEventListener('beforeinstallprompt', function (event) {
+      event.preventDefault();
+      deferredPrompt = event;
+      installBtn.hidden = false;
+    });
+
+    installBtn.addEventListener('click', async function () {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      await deferredPrompt.userChoice;
+      deferredPrompt = null;
+      installBtn.hidden = true;
+    });
+  </script>
+</body>
+</html>
