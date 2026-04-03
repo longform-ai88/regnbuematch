@@ -2,7 +2,10 @@ const CACHE_NAME = 'regnbuematch-v1';
 const ASSETS = [
   '/',
   '/index.html',
-  '/manifest.json'
+  '/manifest.json',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png',
+  '/icons/apple-touch-icon.png'
 ];
 
 self.addEventListener('install', event => {
