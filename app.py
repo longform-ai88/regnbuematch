@@ -73,10 +73,10 @@ if "users" not in st.session_state:
 
 # --- SIDEBAR MENY ---
 st.sidebar.title("Meny")
-if st.sidebar.button("Logg inn"):
+if st.sidebar.button("Logg inn", key="sidebar_login_btn"):
 	st.session_state.mode = "login"
 	st.rerun()
-if st.sidebar.button("Registrer"):
+if st.sidebar.button("Registrer", key="sidebar_register_btn"):
 	st.session_state.mode = "register"
 	st.rerun()
 
@@ -140,7 +140,7 @@ if st.session_state.mode == "register":
 	st.title("Registrer deg")
 
 	# SEND KODE
-	if st.button("Send verifiseringskode"):
+	if st.button("Send verifiseringskode", key="send_verification_code_btn"):
 		if not email:
 			st.error("Skriv inn e-post først")
 		else:
@@ -160,7 +160,7 @@ if st.session_state.mode == "register":
 	if st.session_state.verification_code:
 		code_input = st.text_input("Skriv inn kode")
 
-		if st.button("Bekreft kode"):
+		if st.button("Bekreft kode", key="confirm_verification_code_btn"):
 			if code_input == st.session_state.verification_code:
 				st.success("E-post verifisert ✅")
 				st.session_state.email_verified = True
@@ -169,7 +169,7 @@ if st.session_state.mode == "register":
 				st.error("Feil kode")
 
 	# REGISTER BUTTON
-	if st.button("Registrer", disabled=not st.session_state.email_verified):
+	if st.button("Registrer", key="register_simple_btn", disabled=not st.session_state.email_verified):
 		if not username or not password:
 			st.error("Fyll ut alle felt")
 		else:
@@ -429,7 +429,7 @@ if choice == "Registrer":
 
 	# Send kode-knapp og logikk
 	st.write("\n---\n")
-	if st.button("Send kode"):
+	if st.button("Send kode", key="send_code_main_btn"):
 		code = ''.join(random.choices(string.digits, k=6))
 		st.session_state['verification_code'] = code
 		st.session_state['verification_email'] = reg_email
@@ -450,7 +450,7 @@ if choice == "Registrer":
 		# Vis kun info-melding, ikke send e-post på nytt
 		st.info(f"En kode er sendt til e-post: {st.session_state['verification_email']} (sjekk innboksen din)")
 		input_code = st.text_input("Skriv inn koden du har mottatt:", key="verify_code")
-		if st.button("Bekreft kode"):
+		if st.button("Bekreft kode", key="confirm_code_main_btn"):
 			if input_code == st.session_state['verification_code']:
 				st.success("Verifisering vellykket! Du kan nå registrere deg.")
 				st.session_state['email_verified'] = True
@@ -479,7 +479,7 @@ if choice == "Registrer":
 	if registrer_disabled and not st.session_state.get('pending_verification', False):
 		st.info("Du må verifisere e-postadressen din før du kan registrere deg.")
 	else:
-		if st.button("Registrer", disabled=registrer_disabled):
+		if st.button("Registrer", key="register_main_btn", disabled=registrer_disabled):
 			if not reg_password:
 				st.error("Du må skrive inn et passord.")
 			elif not reg_email or not reg_phone:
@@ -522,7 +522,7 @@ if st.session_state.mode == "Login":
 		st.session_state["login_pass"] = ""
 	login_username = st.text_input("Brukernavn", key="login_user")
 	login_password = st.text_input("Passord", type="password", key="login_pass")
-	if st.button("Logg inn"):
+	if st.button("Logg inn", key="login_secondary_btn"):
 		user = next((u for u in users if u['username'] == login_username and u['password'] == login_password), None)
 		if user:
 			st.session_state.logged_in = True
@@ -598,7 +598,7 @@ if st.session_state.logged_in and st.session_state.user:
 			for c in chat_history:
 				st.write(f"{c['sender']}: {c['message']}")
 			msg = st.text_input("Skriv melding")
-			if st.button("Send"):
+			if st.button("Send", key="send_chat_btn"):
 				send_message(st.session_state.user['username'], chat_partner, msg)
 				st.rerun()
 		else:
@@ -613,7 +613,7 @@ if st.session_state.logged_in and st.session_state.user:
 			for c in group_history:
 				st.write(f"{c['sender']}: {c['message']}")
 			group_msg = st.text_input("Skriv melding til felles chat")
-			if st.button("Send til felles chat"):
+			if st.button("Send til felles chat", key="send_group_chat_btn"):
 				send_group_message(st.session_state.user['username'], group_msg)
 				st.rerun()
 
@@ -621,11 +621,11 @@ if st.session_state.logged_in and st.session_state.user:
 	with tabs[tab_idx]:  # AI-assistent
 		st.header("AI-assistent")
 		question = st.text_input("Spør AI-assistenten om dating, sikkerhet, tips osv.")
-		if st.button("Spør AI"):
+		if st.button("Spør AI", key="ask_ai_btn"):
 			response = ai_assistant_response(question)
 			st.write(response)
 
-	if st.button("Logg ut"):
+	if st.button("Logg ut", key="logout_btn"):
 		st.session_state.logged_in = False
 		st.session_state.user = None
 		st.rerun()
