@@ -304,8 +304,6 @@ if choice == "Registrer":
 	STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
 	STRIPE_PRICE_ID = os.getenv("STRIPE_PRICE_ID", "")
 	APP_BASE_URL = os.getenv("APP_BASE_URL", "").rstrip("/")
-	if not APP_BASE_URL:
-		APP_BASE_URL = st.secrets.get("APP_BASE_URL", "").rstrip("/") if hasattr(st, "secrets") else ""
 
 	stripe_config_ok = bool(STRIPE_SECRET_KEY and STRIPE_PRICE_ID)
 	if stripe_config_ok:
