@@ -2,3 +2,4 @@ uvicorn
 stripe
 python-dotenv
 streamlit
+openai
