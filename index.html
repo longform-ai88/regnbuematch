@@ -5,13 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Regnbuematch</title>
   <meta name="theme-color" content="#ff7eb3" />
-<meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="default" />
-<meta name="apple-mobile-web-app-title" content="Regnbuematch" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Regnbuematch" />
 
-<link rel="manifest" href="/manifest.json" />
-<link rel="apple-touch-icon" href="/icons/icon-192.png" />
-<link rel="icon" href="/icons/icon-192.png" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png" />
   <style>
     :root {
       --pink: #ff7eb3;
@@ -369,8 +370,8 @@
       <div class="price">199 kr</div>
       <p>Secure checkout and instant access.</p>
       <button onclick="window.location.href='https://buy.stripe.com/aFaaEY3T73Um2Um52DfnO04'">
-  Start Pro – 199 kr/mnd
-</button>
+        Start Pro – 199 kr/mnd
+      </button>
       <a href="#waitlist" class="small-link" onclick="showWaitlist(event)">Join waitlist instead</a>
     </div>
   </div>
@@ -607,20 +608,23 @@
         joinBtn.disabled = false;
       }
     });
+
     function goToCheckout() {
       alert("Checkout kommer snart");
     }
-        if ('serviceWorker' in navigator) {
+
+    if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js').catch(console.error);
       });
     }
+
     function showWaitlist(event) {
       event.preventDefault();
       signup.classList.add("active");
     }
 
-    render();    
+    render();
   </script>
 </body>
 </html>
