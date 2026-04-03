@@ -87,31 +87,24 @@ if st.sidebar.button("Registrer"):
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-def send_verification_email(to_email, code):
-	smtp_server = "smtp.gmail.com"
-	smtp_port = 587
-	smtp_user = "tobias.mikkelsen02@gmail.com"
-	smtp_pass = "qfrt nlmk dqeq rkwn"
+def send_verification_code(email, code):
+    response = requests.post(
+        "https://api.resend.com/emails",
+        headers={
+            "Authorization": f"Bearer {os.getenv('RESEND_API_KEY')}",
+            "Content-Type": "application/json"
+        },
+        json={
+            "from": "onboarding@resend.dev",
+            "to": [email],
+            "subject": "Verifiseringskode",
+            "html": f"<h2>Koden din er: {code}</h2>"
+        }
+    )
 
-	msg = MIMEMultipart()
-	msg["From"] = smtp_user
-	msg["To"] = to_email
-	msg["Subject"] = "Verifiseringskode"
-
-	body = f"Din kode er: {code}"
-	msg.attach(MIMEText(body, "plain"))
-
-	try:
-		server = smtplib.SMTP(smtp_server, smtp_port)
-		server.starttls()
-		server.login(smtp_user, smtp_pass)
-		server.send_message(msg)
-		server.quit()
-		print("🚀 E-post sendt!")
-		return True
-	except Exception as e:
-		print("❌ Feil:", e)
-		return str(e)
+    print("EMAIL STATUS:", response.status_code)
+    print("EMAIL RESPONSE:", response.text)
+	return response.status_code == 200
 
 # ---------------- DATABASE (enkel) ----------------
 if "users" not in st.session_state:
