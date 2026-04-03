@@ -82,6 +82,7 @@ if st.sidebar.button("Registrer"):
 
 
 # --- EPOST VERIFISERING ---
+import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -100,17 +101,16 @@ def send_verification_email(to_email, code):
 	msg.attach(MIMEText(body, "plain"))
 
 	try:
-	server = smtplib.SMTP(smtp_server, smtp_port)
-	server.starttls()
-	server.login(smtp_user, smtp_pass)
-	server.send_message(msg)
-	server.quit()
-	print("E-post sendt!")
-	return True
-
+		server = smtplib.SMTP(smtp_server, smtp_port)
+		server.starttls()
+		server.login(smtp_user, smtp_pass)
+		server.send_message(msg)
+		server.quit()
+		print("E-post sendt!")
+		return True
 	except Exception as e:
-	print("Feil:", e)
-	return str(e)
+		print("Feil:", e)
+		return str(e)
 
 # ---------------- DATABASE (enkel) ----------------
 if "users" not in st.session_state:
@@ -149,7 +149,7 @@ if st.session_state.mode == "register":
 			st.session_state.verification_email = email
 			st.session_state.email_verified = False
 
-			result = send_verification_code(email, code)
+			result = send_verification_email(email, code)
 
 			if result is True:
 				st.success("Kode sendt til e-post 📧")
