@@ -5,11 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#a259c6" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="RegnbueMatch" />
   <title>RegnbueMatch PWA</title>
   <link rel="manifest" href="./manifest.json" />
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+  <link rel="apple-touch-startup-image" href="./icons/splashscreen.png" />
   <style>
     :root {
       --pink: #ff4fa3;
@@ -17,6 +18,7 @@
       --blue: #4b8bff;
       --text: #ffffff;
       --card: rgba(255,255,255,0.14);
+      --card-strong: rgba(255,255,255,0.2);
     }
     * { box-sizing: border-box; }
     body {
@@ -30,18 +32,54 @@
       padding: 16px;
     }
     .card {
-      width: min(100%, 480px);
+      width: min(100%, 520px);
       background: var(--card);
       border: 1px solid rgba(255,255,255,0.22);
-      backdrop-filter: blur(12px);
-      border-radius: 24px;
-      padding: 28px;
+      backdrop-filter: blur(14px);
+      border-radius: 28px;
+      padding: 22px;
       text-align: center;
       box-shadow: 0 12px 40px rgba(0,0,0,0.18);
     }
-    .logo {
-      font-size: 4rem;
-      margin-bottom: 8px;
+    .preview {
+      width: min(100%, 280px);
+      border-radius: 28px;
+      box-shadow: 0 12px 28px rgba(0,0,0,0.22);
+      margin-bottom: 14px;
+      border: 1px solid rgba(255,255,255,0.28);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .brand img {
+      width: 56px;
+      height: 56px;
+      border-radius: 16px;
+    }
+    .brand-copy {
+      text-align: left;
+    }
+    .brand-copy strong {
+      display: block;
+      font-size: 1.15rem;
+    }
+    .badge-row {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 14px 0;
+    }
+    .badge {
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: var(--card-strong);
+      border: 1px solid rgba(255,255,255,0.3);
+      font-size: 0.9rem;
     }
     h1 { margin: 0 0 10px; }
     p { line-height: 1.5; }
@@ -79,14 +117,26 @@
 </head>
 <body>
   <main class="card">
-    <div class="logo">🌈</div>
-    <h1>RegnbueMatch</h1>
-    <p>Installer appen som en PWA for rask tilgang fra mobil og skrivebord.</p>
+    <img src="./icons/splashscreen.png" alt="RegnbueMatch splashscreen" class="preview" />
+    <div class="brand">
+      <img src="./icons/icon-192.png" alt="RegnbueMatch ikon" />
+      <div class="brand-copy">
+        <strong>RegnbueMatch</strong>
+        <span>Installerbar PWA for mobil og skrivebord</span>
+      </div>
+    </div>
+    <div class="badge-row">
+      <span class="badge">📲 PWA</span>
+      <span class="badge">💬 Chat</span>
+      <span class="badge">💎 Abonnement</span>
+    </div>
+    <h1>Installer appen</h1>
+    <p>Bruk RegnbueMatch som en ekte app med eget ikon, splashscreen og rask åpning direkte fra hjemskjermen.</p>
     <div class="actions">
       <a class="primary" href="/">Åpne appen</a>
       <button id="installBtn" class="secondary" hidden>Installer appen</button>
     </div>
-    <p class="hint">Hvis knappen ikke vises, bruk nettleserens meny og velg <b>Installer app</b> eller <b>Legg til på startskjerm</b>.</p>
+    <p class="hint">Hvis installasjonsknappen ikke vises, bruk nettleserens meny og velg <b>Installer app</b> eller <b>Legg til på startskjerm</b>.</p>
   </main>
 
   <script>

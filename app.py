@@ -1,684 +1,818 @@
-
-from dotenv import load_dotenv
-import os
-
-load_dotenv()
-
+﻿from dotenv import load_dotenv
 import json
-
-PAID_EMAILS_FILE = "paid_emails.json"
-
-def load_users():
-	if os.path.exists("users.json"):
-		with open("users.json", "r") as f:
-			return json.load(f)
-	return []
-
-def save_users(users):
-	with open("users.json", "w") as f:
-		json.dump(users, f)
-
-def load_paid_emails():
-	if os.path.exists(PAID_EMAILS_FILE):
-		with open(PAID_EMAILS_FILE, "r") as f:
-			return json.load(f)
-	return []
-
-def save_paid_email(email):
-	if not email:
-		return
-	paid_emails = load_paid_emails()
-	if email not in paid_emails:
-		paid_emails.append(email)
-		with open(PAID_EMAILS_FILE, "w") as f:
-			json.dump(paid_emails, f)
-
-def is_email_paid(email):
-	if not email:
-		return False
-	return email in load_paid_emails()
-# TEST NEDERST
-
-
-
-
-
+import os
+import random
+import smtplib
+import string
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
 import streamlit as st
 import stripe
-import random
-import string
-import requests
 
-st.markdown("""
+load_dotenv()
+st.set_page_config(page_title="RegnbueMatch", page_icon="🌈", layout="centered")
+
+USERS_FILE = "users.json"
+PAID_EMAILS_FILE = "paid_emails.json"
+
+DEMO_PROFILES = [
+    {
+        "username": "PrideAlex",
+        "password": "pass123",
+        "email": "alex@regnbuematch.no",
+        "phone": "90000001",
+        "gender": "Mann",
+        "seeking": "Mann",
+        "age": 28,
+        "bio": "Liker konserter, kaffeprat og spontane helgeturer 🌈",
+        "matches": [],
+        "is_paid": True,
+    },
+    {
+        "username": "RainbowSara",
+        "password": "pass123",
+        "email": "sara@regnbuematch.no",
+        "phone": "90000002",
+        "gender": "Kvinne",
+        "seeking": "Kvinne",
+        "age": 26,
+        "bio": "Trygg, sosial og alltid klar for en god samtale ✨",
+        "matches": [],
+        "is_paid": True,
+    },
+    {
+        "username": "QueerChris",
+        "password": "pass123",
+        "email": "chris@regnbuematch.no",
+        "phone": "90000003",
+        "gender": "Annet",
+        "seeking": "Annet",
+        "age": 31,
+        "bio": "Filmkveld, humor og ærlige relasjoner er min vibe 💜",
+        "matches": [],
+        "is_paid": False,
+    },
+    {
+        "username": "NovaKim",
+        "password": "pass123",
+        "email": "nova@regnbuematch.no",
+        "phone": "90000004",
+        "gender": "Kvinne",
+        "seeking": "Mann",
+        "age": 29,
+        "bio": "Elsker god mat, fjellturer og små romantiske øyeblikk.",
+        "matches": [],
+        "is_paid": True,
+    },
+]
+
+ONLINE_SHOWCASE = [
+    {
+        "username": "PrideAlex",
+        "age": 28,
+        "bio": "Klar for nye matcher i kveld.",
+        "img": "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=facearea&w=600&q=80&facepad=2",
+    },
+    {
+        "username": "RainbowSara",
+        "age": 26,
+        "bio": "Svarer raskt og elsker hyggelige meldinger.",
+        "img": "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=facearea&w=600&q=80&facepad=2",
+    },
+    {
+        "username": "QueerChris",
+        "age": 31,
+        "bio": "Ser etter ekte kjemi og trygg stemning.",
+        "img": "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?auto=format&fit=facearea&w=600&q=80&facepad=2",
+    },
+]
+
+APP_CSS = """
 <style>
-label, input, h1, h2, h3 { color: black !important; }
-input::placeholder, textarea::placeholder { color: #666 !important; }
-.stTextInput input, .stTextArea textarea, .stNumberInput input, .stSelectbox div[data-baseweb=\"select\"] > div {
-	background: white !important;
-	color: black !important;
-	border-radius: 12px !important;
-}
-.stButton > button, .stLinkButton > a {
-	width: 100%;
-	border-radius: 14px !important;
-	min-height: 48px;
-	font-size: 1rem;
-	font-weight: 600;
-}
-.stImage img {
-	max-width: 100%;
-	height: auto;
-	border-radius: 12px;
+.stApp {
+    background:
+        radial-gradient(circle at top left, rgba(255, 79, 163, 0.18), transparent 30%),
+        radial-gradient(circle at top right, rgba(75, 139, 255, 0.18), transparent 28%),
+        linear-gradient(135deg, #fff8fc 0%, #f5f7ff 100%);
 }
 .block-container {
-	padding-top: 1rem !important;
-	padding-bottom: 4rem !important;
-	max-width: 760px;
+    max-width: 860px;
+    padding-top: 0.9rem !important;
+    padding-bottom: 4rem !important;
+}
+.hero-card {
+    background: linear-gradient(135deg, #ff4fa3 0%, #a259c6 55%, #4b8bff 100%);
+    border-radius: 24px;
+    padding: 22px 18px;
+    color: #ffffff;
+    box-shadow: 0 18px 38px rgba(91, 36, 122, 0.22);
+    margin-bottom: 14px;
+}
+.hero-card h1, .hero-card p {
+    color: #ffffff !important;
+    margin: 0;
+}
+.pill-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+.pill {
+    background: rgba(255,255,255,0.18);
+    border: 1px solid rgba(255,255,255,0.28);
+    border-radius: 999px;
+    padding: 6px 10px;
+    font-size: 0.85rem;
+    color: #fff;
+}
+label, h1, h2, h3, h4 {
+    color: #1d1230 !important;
+}
+input::placeholder, textarea::placeholder {
+    color: #666 !important;
+}
+.stTextInput input, .stTextArea textarea, .stNumberInput input,
+.stSelectbox div[data-baseweb="select"] > div {
+    background: #ffffff !important;
+    color: #1d1230 !important;
+    border-radius: 12px !important;
+}
+.stButton > button, .stLinkButton > a {
+    width: 100%;
+    border-radius: 14px !important;
+    min-height: 48px;
+    font-size: 1rem;
+    font-weight: 600;
+}
+.stImage img {
+    border-radius: 18px;
+}
+[data-testid="stSidebar"] {
+    background: rgba(162, 89, 198, 0.08) !important;
+    border-right: 1px solid rgba(162, 89, 198, 0.12);
+}
+div[data-testid="stMetric"] {
+    background: rgba(255,255,255,0.72);
+    border: 1px solid rgba(162, 89, 198, 0.16);
+    border-radius: 16px;
+    padding: 10px 12px;
+}
+.profile-card {
+    background: rgba(255,255,255,0.88);
+    border-radius: 18px;
+    padding: 14px;
+    border: 1px solid rgba(162,89,198,0.14);
+    box-shadow: 0 8px 24px rgba(69, 38, 100, 0.08);
+    margin-bottom: 12px;
 }
 @media (max-width: 768px) {
-	.block-container {
-		padding-left: 0.8rem !important;
-		padding-right: 0.8rem !important;
-		padding-top: 0.6rem !important;
-	}
-	h1 { font-size: 1.8rem !important; }
-	h2 { font-size: 1.35rem !important; }
-	.stTabs [data-baseweb=\"tab-list\"] {
-		gap: 4px;
-		flex-wrap: wrap;
-	}
-	.stTabs [data-baseweb=\"tab\"] {
-		padding: 0.45rem 0.7rem;
-		font-size: 0.9rem;
-	}
-	section[data-testid=\"stSidebar\"] {
-		width: 82vw !important;
-	}
-}
-</style>
-""", unsafe_allow_html=True)
-
-if "users" not in st.session_state:
-	users_loaded = load_users()
-	if not users_loaded:
-		# Generer 100 fake brukere
-		import random
-		fake_names = [
-			f"Bruker{n}" for n in range(1, 101)
-		]
-		fake_users = []
-		for name in fake_names:
-			fake_users.append({
-				"username": name,
-				"password": "pass123",
-				"email": f"{name.lower()}@fake.com"
-			})
-		save_users(fake_users)
-		users_loaded = fake_users
-	st.session_state.users = users_loaded
-
-# --- SIDEBAR MENY ---
-st.sidebar.title("Meny")
-if st.sidebar.button("Logg inn", key="sidebar_login_btn"):
-	st.session_state.mode = "login"
-	st.rerun()
-if st.sidebar.button("Registrer", key="sidebar_register_btn"):
-	st.session_state.mode = "register"
-	st.rerun()
-
-
-# --- EPOST VERIFISERING ---
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-
-def send_verification_email(to_email, code):
-	smtp_server = "smtp.gmail.com"
-	smtp_port = 587
-	smtp_user = "tobias.mikkelsen02@gmail.com"
-	smtp_pass = "qfrt nlmk dqeq rkwn"
-
-	msg = MIMEMultipart()
-	msg["From"] = smtp_user
-	msg["To"] = to_email
-	msg["Subject"] = "Verifiseringskode"
-
-	body = f"Din kode er: {code}"
-	msg.attach(MIMEText(body, "plain"))
-
-	try:
-		server = smtplib.SMTP(smtp_server, smtp_port)
-		server.starttls()
-		server.login(smtp_user, smtp_pass)
-		server.send_message(msg)
-		server.quit()
-		print("E-post sendt!")
-		return True
-	except Exception as e:
-		print("Feil:", e)
-		return str(e)
-
-# ---------------- DATABASE (enkel) ----------------
-if "users" not in st.session_state:
-	st.session_state.users = []
-
-# ---------------- MODE ----------------
-if "mode" not in st.session_state:
-	st.session_state.mode = "register"
-
-# ---------------- VERIFY STATE ----------------
-for key, default in [
-	("verification_code", None),
-	("verification_email", None),
-	("email_verified", False),
-]:
-	if key not in st.session_state:
-		st.session_state[key] = default
-
-# ---------------- REGISTER ----------------
-if st.session_state.mode == "register":
-	st.write("---")
-
-	username = st.text_input("Brukernavn")
-	password = st.text_input("Passord", type="password")
-	email = st.text_input("E-post")
-
-	st.title("Registrer deg")
-
-	# SEND KODE
-	if st.button("Send verifiseringskode", key="send_verification_code_btn"):
-		if not email:
-			st.error("Skriv inn e-post først")
-		else:
-			code = "".join(random.choices(string.digits, k=6))
-			st.session_state.verification_code = code
-			st.session_state.verification_email = email
-			st.session_state.email_verified = False
-
-			result = send_verification_email(email, code)
-
-			if result is True:
-				st.success("Kode sendt til e-post 📧")
-			else:
-				st.error(result)
-
-	# VERIFY INPUT
-	if st.session_state.verification_code:
-		code_input = st.text_input("Skriv inn kode")
-
-		if st.button("Bekreft kode", key="confirm_verification_code_btn"):
-			if code_input == st.session_state.verification_code:
-				st.success("E-post verifisert ✅")
-				st.session_state.email_verified = True
-				st.session_state.verification_code = None
-			else:
-				st.error("Feil kode")
-
-	# REGISTER BUTTON
-	if st.button("Registrer", key="register_simple_btn", disabled=not st.session_state.email_verified):
-		if not username or not password:
-			st.error("Fyll ut alle felt")
-		else:
-			st.session_state.users.append({
-				"username": username,
-				"password": password,
-				"email": email
-			})
-			save_users(st.session_state.users)
-
-			st.success("Bruker opprettet 🎉")
-
-			# reset state
-			st.session_state.email_verified = False
-
-			# gå til login
-			st.session_state.mode = "login"
-			st.rerun()
-
-# ---------------- LOGIN ----------------
-elif st.session_state.mode == "login":
-	st.title("Logg inn")
-
-	login_user = st.text_input("Brukernavn")
-	login_pass = st.text_input("Passord", type="password")
-
-	if st.button("Logg inn", key="login_btn_main"):
-		user = next(
-			(u for u in st.session_state.users
-			 if u["username"] == login_user and u["password"] == login_pass),
-			None
-		)
-
-		if user:
-			st.success(f"Velkommen {login_user} 🚀")
-		else:
-			st.error("Feil brukernavn eller passord")
-
-	if st.button("Gå til registrering", key="goto_register_btn"):
-		st.session_state.mode = "register"
-		st.rerun()
-# Rainbow background CSS + sidebar styling + animert finger
-
-
-
-# Rainbow background CSS + sidebar styling + animert finger
-
-# Ny bakgrunn med svak gradient, blur og opacity
-rainbow_css = """
-<style>
-body {
-	min-height: 100vh;
-	background: linear-gradient(120deg, rgba(255,0,90,0.7) 0%, rgba(255,153,0,0.6) 20%, rgba(255,255,0,0.5) 40%, rgba(51,204,51,0.5) 60%, rgba(0,102,255,0.5) 80%, rgba(102,0,204,0.5) 100%);
-	backdrop-filter: blur(8px);
-}
-.stApp {
-	background: rgba(255,255,255,0.7);
-	border-radius: 18px;
-	box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.18);
-	padding: 12px 0 12px 0;
-}
-section[data-testid="stSidebar"] {
-	background: rgba(162,89,198,0.85) !important;
-	backdrop-filter: blur(4px);
+    .block-container {
+        padding-left: 0.8rem !important;
+        padding-right: 0.8rem !important;
+        padding-top: 0.6rem !important;
+    }
+    .hero-card {
+        padding: 18px 14px;
+        border-radius: 20px;
+    }
+    h1 { font-size: 1.8rem !important; }
+    h2 { font-size: 1.3rem !important; }
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 4px;
+        flex-wrap: wrap;
+    }
+    .stTabs [data-baseweb="tab"] {
+        padding: 0.45rem 0.65rem;
+        font-size: 0.9rem;
+    }
 }
 </style>
 """
-st.markdown(rainbow_css, unsafe_allow_html=True)
 
 
+def load_json_file(path, default):
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as file:
+                return json.load(file)
+        except (json.JSONDecodeError, OSError):
+            return default
+    return default
 
 
+def save_json_file(path, data):
+    with open(path, "w", encoding="utf-8") as file:
+        json.dump(data, file, ensure_ascii=False, indent=2)
 
 
-
-st.set_page_config(page_title="RegnbueMatch", page_icon="🌈", layout="centered")
-
-# Initier session state tidlig
-if 'logged_in' not in st.session_state:
-    st.session_state.logged_in = False
-if 'goto_register' not in st.session_state:
-    st.session_state.goto_register = False
-if 'mode' not in st.session_state:
-    st.session_state.mode = 'main'  # Verdier: 'main', 'register', 'login'
+def load_paid_emails():
+    return load_json_file(PAID_EMAILS_FILE, [])
 
 
-# 'Lag Profil' knapp på forsiden
-if not st.session_state.logged_in and st.session_state.mode == 'main':
-	if st.button("✨ Lag Profil / Kom i gang", key="create_profile_btn"):
-		st.session_state.mode = 'register'
-st.title("🌈 RegnbueMatch")
-col1, col2 = st.columns(2)
-with col1:
-	st.link_button("📲 Installer appen", "/app/static/index.html", use_container_width=True)
-with col2:
-	st.link_button("🌍 Åpne webapp", "/", use_container_width=True)
-st.caption("På mobil kan du bruke ‘Legg til på startskjerm’, og på PC kan du velge ‘Installer app’ i nettleseren.")
-st.info("Tips: PWA-versjonen gir en mer app-lignende opplevelse på mobil og skrivebord.")
-
-# Nullstill mode til 'main' etter utlogging eller etter registreringsflyt
-if not st.session_state.logged_in and st.session_state.mode != 'main':
-	if st.sidebar.button("Tilbake til forsiden", key="back_to_main"):
-		st.session_state.mode = 'main'
+def save_paid_email(email):
+    email = (email or "").strip().lower()
+    if not email:
+        return
+    paid_emails = load_paid_emails()
+    if email not in paid_emails:
+        paid_emails.append(email)
+        save_json_file(PAID_EMAILS_FILE, paid_emails)
 
 
-# Styr flyt med mode og vis kun én meny
-choice = None
-if st.session_state.mode == 'register':
-	choice = "Registrer"
-elif st.session_state.mode == 'login':
-	choice = "Logg inn"
-elif not st.session_state.logged_in:
-	menu = ["Logg inn", "Registrer"]
-	choice = st.sidebar.selectbox("Meny", menu, key="sidebar_menu_selectbox")
-
-# Etter registrering: vis stor suksessmelding og gå til login
-if st.session_state.get('registration_success', False):
-	st.markdown("""
-	<div style='background: #d4edda; color: #155724; border-radius: 16px; padding: 32px 18px; text-align: center; font-size: 1.35em; margin-bottom: 24px; border: 2px solid #28a745;'>
-		<b>Bruker registrert!</b><br>Du kan nå logge inn med din nye konto.
-	</div>
-	""", unsafe_allow_html=True)
-	st.session_state['registration_success'] = False
-	st.session_state.mode = 'login'
-	st.stop()
-
-if 'logged_in' not in st.session_state:
-	st.session_state.logged_in = False
-	st.session_state.user = None
+def is_email_paid(email):
+    email = (email or "").strip().lower()
+    return bool(email and email in load_paid_emails())
 
 
+def normalize_user(user):
+    username = user.get("username", "Bruker")
+    email = (user.get("email") or f"{username.lower().replace(' ', '')}@example.com").lower()
+    return {
+        "username": username,
+        "password": user.get("password", "pass123"),
+        "email": email,
+        "phone": user.get("phone", ""),
+        "gender": user.get("gender", "Annet"),
+        "seeking": user.get("seeking", "Annet"),
+        "age": int(user.get("age", 25)),
+        "bio": user.get("bio", "Klar for nye matcher 🌈"),
+        "matches": list(dict.fromkeys(user.get("matches", []))),
+        "is_paid": bool(user.get("is_paid", False) or is_email_paid(email)),
+    }
 
 
-if choice == "Registrer":
-	st.subheader("Opprett ny profil")
-	# Betalingssystem: vis kjøp-knapp og status
-
-	# --- STRIPE INTEGRASJON ---
-	STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
-	STRIPE_PRICE_ID = os.getenv("STRIPE_PRICE_ID", "")
-	APP_BASE_URL = os.getenv("APP_BASE_URL", "").rstrip("/")
-
-	stripe_config_ok = bool(STRIPE_SECRET_KEY and STRIPE_PRICE_ID)
-	if stripe_config_ok:
-		stripe.api_key = STRIPE_SECRET_KEY
-	else:
-		st.info("Stripe er ikke konfigurert ennå. Sett STRIPE_SECRET_KEY og STRIPE_PRICE_ID i miljøvariabler for å teste betaling.")
-
-	if not APP_BASE_URL:
-		st.info("Sett APP_BASE_URL i miljøvariabler (f.eks. https://din-app.onrender.com) for korrekt Stripe-redirect i produksjon.")
-
-	query_params = st.query_params
-	if query_params.get("success") == "true":
-		session_id = query_params.get("session_id", "")
-		if stripe_config_ok and session_id:
-			try:
-				checkout_session = stripe.checkout.Session.retrieve(session_id)
-				if checkout_session.get("payment_status") == "paid":
-					st.session_state.is_paid = True
-					paid_email = checkout_session.get("customer_email")
-					if not paid_email:
-						customer_details = checkout_session.get("customer_details") or {}
-						paid_email = customer_details.get("email")
-					save_paid_email(paid_email)
-					st.success("Betaling bekreftet av Stripe. Du har aktivt abonnement!")
-				else:
-					st.warning("Betalingen er ikke bekreftet enda hos Stripe.")
-			except Exception as e:
-				st.error(f"Kunne ikke verifisere Stripe-betalingen: {e}")
-		query_params.clear()
-	elif query_params.get("canceled") == "true":
-		st.info("Betalingen ble avbrutt.")
-		query_params.clear()
-
-	if "is_paid" not in st.session_state:
-		st.session_state.is_paid = False
-	if not st.session_state.is_paid:
-		st.warning("Du må ha abonnement for å chatte med brukere!")
-		if st.button("Kjøp abonnement (kr 199)", key="buy_subscription", disabled=not (stripe_config_ok and bool(APP_BASE_URL))):
-			# Opprett Stripe Checkout Session
-			try:
-				session_payload = {
-					"payment_method_types": ["card"],
-					"line_items": [{
-						"price": STRIPE_PRICE_ID,
-						"quantity": 1,
-					}],
-					"mode": "subscription",
-					"success_url": f"{APP_BASE_URL}/?success=true&session_id={{CHECKOUT_SESSION_ID}}",
-					"cancel_url": f"{APP_BASE_URL}/?canceled=true",
-				}
-				if st.session_state.get("reg_email"):
-					session_payload["customer_email"] = st.session_state["reg_email"]
-
-				session = stripe.checkout.Session.create(**session_payload)
-				st.markdown(f"[Klikk her for å betale med Stripe]({session.url})", unsafe_allow_html=True)
-				st.info("Fullfør betalingen i Stripe-vinduet. Du blir sendt tilbake hit for automatisk bekreftelse.")
-			except Exception as e:
-				st.error(f"Stripe-feil ved oppretting av betaling: {e}")
-	else:
-		st.success("Du har aktivt abonnement!")
-
-	# Vis 10 fake brukere som 'Online nå' (kun hvis ikke logget inn)
-	if not st.session_state.get('logged_in', False):
-		st.markdown("<b>Online nå:</b>", unsafe_allow_html=True)
-		fake_online = st.session_state.users[:10]
-		for idx, user in enumerate(fake_online):
-			btn = st.button(f"{user['username']}", key=f"fakeuser_{idx}")
-			st.image(f"https://api.dicebear.com/7.x/adventurer/svg?seed={user['username']}", width=60)
-			if btn:
-				if st.session_state.is_paid:
-					st.success(f"Du kan nå chatte med {user['username']}! (demo)")
-				else:
-					st.info(f"Dette er en demo-konto. Kjøp abonnement for å chatte med brukere som {user['username']}!")
-		st.info("Kjøp abonnement for å chatte med disse brukerne!")
-
-	reg_username = st.text_input("Brukernavn", key="reg_user")
-	reg_password = st.text_input("Passord", type="password", key="reg_pass")
-	reg_email = st.text_input("E-postadresse", key="reg_email")
-	if reg_email and is_email_paid(reg_email):
-		st.session_state.is_paid = True
-		st.success("Denne e-posten har allerede en bekreftet betaling.")
-	reg_phone = st.text_input("Telefonnummer", key="reg_phone")
-	reg_gender = st.selectbox("Kjønn", ["Mann", "Kvinne", "Annet"], key="reg_gender")
-	reg_seeking = st.selectbox("Hva søker du etter?", ["Mann", "Kvinne", "Annet", "Swingers"], key="reg_seeking")
-	reg_age = st.number_input("Alder", min_value=18, max_value=99, value=25, key="reg_age")
-	reg_bio = st.text_area("Om deg selv", key="reg_bio")
+def save_users(users):
+    save_json_file(USERS_FILE, [normalize_user(user) for user in users])
 
 
-	# Initier session state for verifisering og e-post
-	if 'pending_verification' not in st.session_state:
-		st.session_state['pending_verification'] = None
-	if 'verification_code' not in st.session_state:
-		st.session_state['verification_code'] = None
-	if 'verification_email' not in st.session_state:
-		st.session_state['verification_email'] = None
-	if 'email_sent' not in st.session_state:
-		st.session_state['email_sent'] = False
-	if 'email_verified' not in st.session_state:
-		st.session_state['email_verified'] = False
-	if 'verification_attempts' not in st.session_state:
-		st.session_state['verification_attempts'] = 0
-
-	import random
-	import string
-	import smtplib
-	from email.mime.text import MIMEText
-	from email.mime.multipart import MIMEMultipart
+def load_users():
+    users = [normalize_user(user) for user in load_json_file(USERS_FILE, [])]
+    existing_names = {user["username"] for user in users}
+    for demo_user in DEMO_PROFILES:
+        if demo_user["username"] not in existing_names:
+            users.append(normalize_user(demo_user))
+    save_users(users)
+    return users
 
 
+def get_user_by_username(username):
+    username = (username or "").strip().lower()
+    for user in st.session_state.users:
+        if user["username"].lower() == username:
+            return normalize_user(user)
+    return None
 
 
-
-	# Suksessmelding etter registrering
-	if st.session_state.get('registration_success', False):
-		st.markdown("""
-		<div style='background: #d4edda; color: #155724; border-radius: 16px; padding: 32px 18px; text-align: center; font-size: 1.35em; margin-bottom: 24px; border: 2px solid #28a745;'>
-			<b>Bruker registrert!</b><br>Du kan nå logge inn med din nye konto.
-		</div>
-		""", unsafe_allow_html=True)
-		st.session_state['registration_success'] = False
-		st.stop()
-
-	# Send kode-knapp og logikk
-	st.write("\n---\n")
-	if st.button("Send kode", key="send_code_main_btn"):
-		code = ''.join(random.choices(string.digits, k=6))
-		st.session_state['verification_code'] = code
-		st.session_state['verification_email'] = reg_email
-		st.session_state['pending_verification'] = reg_username if reg_username else reg_email
-		st.session_state['email_verified'] = False
-		st.session_state['verification_attempts'] = 0
-		st.session_state['last_code_sent'] = code
-		st.session_state['last_email_sent'] = reg_email
-		result = send_verification_email(reg_email, code)
-		if result is True:
-			st.info(f"En kode er sendt til e-post: {reg_email} (sjekk innboksen din)")
-			st.session_state.email_sent = True
-		else:
-			st.error(f"Kunne ikke sende e-post: {result}")
-			st.warning("Sjekk at e-post og app-passord er riktig satt opp. Kontakt support hvis problemet vedvarer.")
-
-	if st.session_state['pending_verification'] and not st.session_state.get('email_verified', False):
-		# Vis kun info-melding, ikke send e-post på nytt
-		st.info(f"En kode er sendt til e-post: {st.session_state['verification_email']} (sjekk innboksen din)")
-		input_code = st.text_input("Skriv inn koden du har mottatt:", key="verify_code")
-		if st.button("Bekreft kode", key="confirm_code_main_btn"):
-			if input_code == st.session_state['verification_code']:
-				st.success("Verifisering vellykket! Du kan nå registrere deg.")
-				st.session_state['email_verified'] = True
-				st.session_state['verification_code'] = None
-				st.session_state['pending_verification'] = None
-				st.session_state['email_sent'] = False
-				st.session_state['verification_attempts'] = 0
-				st.session_state['last_code_sent'] = None
-				st.session_state['last_email_sent'] = None
-				# Ikke rerun, behold bruker på registreringssiden
-			else:
-				st.session_state['verification_attempts'] += 1
-				if st.session_state['verification_attempts'] >= 3:
-					st.error("For mange feil forsøk. Be om ny kode.")
-					st.session_state['verification_code'] = None
-					st.session_state['pending_verification'] = None
-					st.session_state['email_sent'] = False
-					st.session_state['verification_attempts'] = 0
-					st.session_state['last_code_sent'] = None
-					st.session_state['last_email_sent'] = None
-				else:
-					st.error("Feil kode. Prøv igjen.")
-
-	# Registreringsskjemaet vises alltid, men knappen er deaktivert hvis ikke verifisert
-	registrer_disabled = not st.session_state.get('email_verified', False)
-	if registrer_disabled and not st.session_state.get('pending_verification', False):
-		st.info("Du må verifisere e-postadressen din før du kan registrere deg.")
-	else:
-		if st.button("Registrer", key="register_main_btn", disabled=registrer_disabled):
-			if not reg_password:
-				st.error("Du må skrive inn et passord.")
-			elif not reg_email or not reg_phone:
-				st.error("E-post og telefonnummer må fylles ut.")
-			else:
-				register_user(
-					reg_username, reg_password, reg_gender, reg_age, reg_bio, reg_seeking,
-					email=reg_email, phone=reg_phone
-				)
-				st.session_state['registration_success'] = True
-				st.session_state.mode = 'login'   # 👈 viktig fix
-				st.rerun()
-
-# Vis demo 'Online nå' kun hvis ikke innlogget og ikke på registreringssiden
-if not st.session_state.logged_in and not st.session_state.goto_register:
-		st.markdown("<hr>", unsafe_allow_html=True)
-		st.subheader("Online nå 🟢")
-		demo_online = [
-				{"username": "PrideAlex", "img": "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=facearea&w=128&q=80&facepad=2"},
-				{"username": "RainbowSara", "img": "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=facearea&w=128&q=80&facepad=2"},
-				{"username": "QueerChris", "img": "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?auto=format&fit=facearea&w=128&q=80&facepad=2"}
-		]
-		for user in demo_online:
-				st.markdown(f"""
-				<div style='display:flex;align-items:center;background:rgba(255,255,255,0.92);border-radius:14px;padding:10px 12px;margin-bottom:10px;box-shadow:0 2px 8px rgba(0,0,0,0.07);'>
-					<img src='{user['img']}' width='54' height='54' style='border-radius:50%;margin-right:14px;border:2px solid #ff3399;'>
-					<div>
-						<b style='font-size:1.1em;color:#ff3399'>{user['username']}</b> <span style='color:#2ecc40'>🟢 Online</span>
-					</div>
-				</div>
-				""", unsafe_allow_html=True)
+def update_user_record(updated_user):
+    updated_user = normalize_user(updated_user)
+    refreshed_users = []
+    found = False
+    for user in st.session_state.users:
+        if user["username"] == updated_user["username"]:
+            refreshed_users.append(updated_user)
+            found = True
+        else:
+            refreshed_users.append(normalize_user(user))
+    if not found:
+        refreshed_users.append(updated_user)
+    st.session_state.users = refreshed_users
+    save_users(refreshed_users)
+    st.session_state.user = updated_user
+    st.session_state.is_paid = updated_user.get("is_paid", False)
 
 
-if st.session_state.mode == "Login":
-	st.subheader("Logg inn")
-	# Nullstill inputfelter hvis man nettopp har registrert
-	if "login_user" not in st.session_state:
-		st.session_state["login_user"] = ""
-	if "login_pass" not in st.session_state:
-		st.session_state["login_pass"] = ""
-	login_username = st.text_input("Brukernavn", key="login_user")
-	login_password = st.text_input("Passord", type="password", key="login_pass")
-	if st.button("Logg inn", key="login_secondary_btn"):
-		user = next((u for u in users if u['username'] == login_username and u['password'] == login_password), None)
-		if user:
-			st.session_state.logged_in = True
-			st.session_state.user = user
-			st.success(f"Velkommen, {login_username}!")
-			st.session_state["login_user"] = ""
-			st.session_state["login_pass"] = ""
-			st.rerun()
-		else:
-			st.error("Feil brukernavn eller passord.")
+def init_session_state():
+    defaults = {
+        "users": load_users(),
+        "mode": "main",
+        "logged_in": False,
+        "user": None,
+        "is_paid": False,
+        "verification_code": None,
+        "verification_email": None,
+        "email_verified": False,
+        "pending_verification": None,
+        "verification_attempts": 0,
+        "registration_success": False,
+        "private_chats": {},
+        "group_chat": [
+            {"sender": "System", "message": "Velkommen til felleschatten i RegnbueMatch 🌈"}
+        ],
+    }
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            if isinstance(value, (list, dict)):
+                st.session_state[key] = value.copy()
+            else:
+                st.session_state[key] = value
+
+    st.session_state.users = [normalize_user(user) for user in st.session_state.users]
+    if st.session_state.user:
+        refreshed_user = get_user_by_username(st.session_state.user.get("username"))
+        if refreshed_user:
+            st.session_state.user = refreshed_user
+            st.session_state.is_paid = refreshed_user.get("is_paid", False)
 
 
-if st.session_state.logged_in and st.session_state.user:
-	st.sidebar.write(f"Innlogget som: {st.session_state.user['username']}")
-	# Simuler betaling/oppgradering
-	if not st.session_state.user.get('is_paid', False):
-		if st.sidebar.button("🔒 Oppgrader til betalende (demo)"):
-			st.session_state.user['is_paid'] = True
-			st.success("Du er nå betalende medlem og har tilgang til felles chat!")
-			st.rerun()
-	# Tabs for alle brukere
-	tab_labels = ["Matcher", "Online nå", "Chat", "AI-assistent"]
-	if st.session_state.user.get('is_paid', False):
-		tab_labels.insert(3, "Felles Chat")
-	tabs = st.tabs(tab_labels)
+def reset_verification_state():
+    st.session_state.verification_code = None
+    st.session_state.verification_email = None
+    st.session_state.email_verified = False
+    st.session_state.pending_verification = None
+    st.session_state.verification_attempts = 0
 
-	tab_idx = 0
-	with tabs[tab_idx]:  # Matcher
-		st.header("Dine matcher")
-		matches = find_matches(st.session_state.user)
-		if matches:
-			for m in matches:
-				st.markdown(f"""
-				<div style='display:flex;align-items:center;background:rgba(255,255,255,0.85);border-radius:14px;padding:10px 12px;margin-bottom:10px;box-shadow:0 2px 8px rgba(0,0,0,0.07);'>
-				  <img src='https://api.dicebear.com/7.x/adventurer/svg?seed={m['username']}' width='54' height='54' style='border-radius:50%;margin-right:14px;border:2px solid #a259c6;'>
-				  <div>
-					<b style='font-size:1.1em;color:#a259c6'>{m['username']}</b> <span style='color:#888'>({m['age']} år)</span><br>
-					<span style='font-size:0.98em;'>{m['bio']}</span>
-				  </div>
-				</div>
-				""", unsafe_allow_html=True)
-				if st.button(f"Match med {m['username']}", key=f"match_{m['username']}"):
-					st.session_state.user['matches'].append(m['username'])
-					m['matches'].append(st.session_state.user['username'])
-					st.success(f"Du har matchet med {m['username']}!")
-		else:
-			st.info("Ingen matcher funnet ennå.")
 
-	tab_idx += 1
-	with tabs[tab_idx]:  # Online nå
-		st.header("Online nå 🟢")
-		demo_online = [
-			{"username": "PrideAlex", "img": "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=facearea&w=128&q=80&facepad=2"},
-			{"username": "RainbowSara", "img": "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=facearea&w=128&q=80&facepad=2"},
-			{"username": "QueerChris", "img": "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?auto=format&fit=facearea&w=128&q=80&facepad=2"}
-		]
-		for user in demo_online:
-			st.markdown(f"""
-			<div style='display:flex;align-items:center;background:rgba(255,255,255,0.92);border-radius:14px;padding:10px 12px;margin-bottom:10px;box-shadow:0 2px 8px rgba(0,0,0,0.07);'>
-			  <img src='{user['img']}' width='54' height='54' style='border-radius:50%;margin-right:14px;border:2px solid #ff3399;'>
-			  <div>
-				<b style='font-size:1.1em;color:#ff3399'>{user['username']}</b> <span style='color:#2ecc40'>🟢 Online</span>
-			  </div>
-			</div>
-			""", unsafe_allow_html=True)
+def create_verification_code():
+    return "".join(random.choices(string.digits, k=6))
 
-	tab_idx += 1
-	with tabs[tab_idx]:  # Chat med matcher
-		st.header("Chat med matcher")
-		if st.session_state.user['matches']:
-			chat_partner = st.selectbox("Velg match for chat", st.session_state.user['matches'])
-			chat_history = get_chat(st.session_state.user['username'], chat_partner)
-			for c in chat_history:
-				st.write(f"{c['sender']}: {c['message']}")
-			msg = st.text_input("Skriv melding")
-			if st.button("Send", key="send_chat_btn"):
-				send_message(st.session_state.user['username'], chat_partner, msg)
-				st.rerun()
-		else:
-			st.info("Du har ingen matcher å chatte med.")
 
-	# Felles chat kun for betalende brukere
-	if st.session_state.user.get('is_paid', False):
-		tab_idx += 1
-		with tabs[tab_idx]:
-			st.header("Felles Chat (kun for betalende)")
-			group_history = get_group_chat()
-			for c in group_history:
-				st.write(f"{c['sender']}: {c['message']}")
-			group_msg = st.text_input("Skriv melding til felles chat")
-			if st.button("Send til felles chat", key="send_group_chat_btn"):
-				send_group_message(st.session_state.user['username'], group_msg)
-				st.rerun()
+def send_verification_email(to_email, code):
+    smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user = os.getenv("SMTP_USER", "tobias.mikkelsen02@gmail.com")
+    smtp_pass = os.getenv("SMTP_PASS", "qfrt nlmk dqeq rkwn")
 
-	tab_idx = len(tabs) - 1
-	with tabs[tab_idx]:  # AI-assistent
-		st.header("AI-assistent")
-		question = st.text_input("Spør AI-assistenten om dating, sikkerhet, tips osv.")
-		if st.button("Spør AI", key="ask_ai_btn"):
-			response = ai_assistant_response(question)
-			st.write(response)
+    if not to_email:
+        return "Skriv inn en gyldig e-postadresse først."
 
-	if st.button("Logg ut", key="logout_btn"):
-		st.session_state.logged_in = False
-		st.session_state.user = None
-		st.rerun()
+    msg = MIMEMultipart()
+    msg["From"] = smtp_user
+    msg["To"] = to_email
+    msg["Subject"] = "Verifiseringskode for RegnbueMatch"
+    msg.attach(MIMEText(f"Din kode er: {code}", "plain"))
+
+    try:
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(smtp_user, smtp_pass)
+        server.send_message(msg)
+        server.quit()
+        return True
+    except Exception as error:
+        return str(error)
+
+
+def register_user(username, password, gender, age, bio, seeking, email, phone):
+    username = (username or "").strip()
+    email = (email or "").strip().lower()
+    phone = (phone or "").strip()
+
+    if not username or not password or not email or not phone:
+        return False, "Fyll ut brukernavn, passord, e-post og telefonnummer."
+
+    if any(user["username"].lower() == username.lower() for user in st.session_state.users):
+        return False, "Brukernavnet er allerede i bruk."
+
+    if any(user["email"].lower() == email for user in st.session_state.users):
+        return False, "E-postadressen er allerede registrert."
+
+    new_user = normalize_user({
+        "username": username,
+        "password": password,
+        "email": email,
+        "phone": phone,
+        "gender": gender,
+        "age": age,
+        "bio": bio or "Ny på RegnbueMatch 🌈",
+        "seeking": seeking,
+        "matches": [],
+        "is_paid": st.session_state.is_paid or is_email_paid(email),
+    })
+    st.session_state.users.append(new_user)
+    save_users(st.session_state.users)
+    return True, new_user
+
+
+def authenticate_user(username, password):
+    username = (username or "").strip().lower()
+    for user in st.session_state.users:
+        if user["username"].lower() == username and user["password"] == password:
+            return normalize_user(user)
+    return None
+
+
+def find_matches(current_user):
+    current_user = normalize_user(current_user)
+    matches = []
+    for user in st.session_state.users:
+        user = normalize_user(user)
+        if user["username"] == current_user["username"]:
+            continue
+        preference_ok = current_user["seeking"] == "Swingers" or user["gender"] in {current_user["seeking"], "Annet"}
+        reverse_ok = user["seeking"] == "Swingers" or current_user["gender"] in {user["seeking"], "Annet"}
+        age_ok = abs(user["age"] - current_user["age"]) <= 12
+        if (preference_ok or reverse_ok) and age_ok:
+            matches.append(user)
+    return matches[:8] or [user for user in st.session_state.users if user["username"] != current_user["username"]][:5]
+
+
+def add_match(current_username, other_username):
+    updated_users = []
+    for user in st.session_state.users:
+        user = normalize_user(user)
+        if user["username"] == current_username and other_username not in user["matches"]:
+            user["matches"].append(other_username)
+        if user["username"] == other_username and current_username not in user["matches"]:
+            user["matches"].append(current_username)
+        updated_users.append(user)
+    st.session_state.users = updated_users
+    save_users(updated_users)
+    if st.session_state.user and st.session_state.user["username"] == current_username:
+        st.session_state.user = get_user_by_username(current_username)
+
+
+def chat_key(user_a, user_b):
+    return "::".join(sorted([user_a, user_b]))
+
+
+def get_chat(user_a, user_b):
+    return st.session_state.private_chats.get(chat_key(user_a, user_b), [])
+
+
+def send_message(user_a, user_b, message):
+    if not message.strip():
+        return
+    key = chat_key(user_a, user_b)
+    history = st.session_state.private_chats.get(key, [])
+    history.append({"sender": user_a, "message": message.strip()})
+    st.session_state.private_chats[key] = history
+
+
+def get_group_chat():
+    return st.session_state.group_chat
+
+
+def send_group_message(sender, message):
+    if not message.strip():
+        return
+    st.session_state.group_chat.append({"sender": sender, "message": message.strip()})
+
+
+def ai_assistant_response(question):
+    prompt = (question or "").strip().lower()
+    if not prompt:
+        return "Skriv et spørsmål først, så får du et kort og nyttig svar."
+    if any(word in prompt for word in ["sikker", "trygg", "rød flagg"]):
+        return "Møt alltid på et offentlig sted, del planene dine med en venn, og stol på magefølelsen din."
+    if any(word in prompt for word in ["første date", "date", "tips"]):
+        return "Hold første date enkel: kaffe, gåtur eller noe lavterskel. Vær nysgjerrig og still åpne spørsmål."
+    if any(word in prompt for word in ["profil", "bio"]):
+        return "En god bio er kort, varm og konkret: hva du liker, hvem du ser etter og litt humor."
+    return "Vær deg selv, vær tydelig på hva du ønsker, og bygg trygghet steg for steg 💜"
+
+
+def handle_payment_status():
+    stripe_secret_key = os.getenv("STRIPE_SECRET_KEY", "")
+    stripe_price_id = os.getenv("STRIPE_PRICE_ID", "")
+    app_base_url = os.getenv("APP_BASE_URL", "").rstrip("/")
+    stripe_config_ok = bool(stripe_secret_key and stripe_price_id)
+
+    if stripe_config_ok:
+        stripe.api_key = stripe_secret_key
+
+    query_params = st.query_params
+    if query_params.get("success") == "true":
+        session_id = query_params.get("session_id", "")
+        if stripe_config_ok and session_id:
+            try:
+                checkout_session = stripe.checkout.Session.retrieve(session_id)
+                if checkout_session.get("payment_status") == "paid":
+                    st.session_state.is_paid = True
+                    paid_email = checkout_session.get("customer_email") or (checkout_session.get("customer_details") or {}).get("email")
+                    save_paid_email(paid_email)
+                    st.success("Betaling bekreftet. Abonnementet er aktivt ✅")
+                else:
+                    st.warning("Betalingen er ikke bekreftet ennå.")
+            except Exception as error:
+                st.error(f"Kunne ikke verifisere Stripe-betalingen: {error}")
+        query_params.clear()
+    elif query_params.get("canceled") == "true":
+        st.info("Betalingen ble avbrutt.")
+        query_params.clear()
+
+    return stripe_config_ok, stripe_price_id, app_base_url
+
+
+def render_sidebar():
+    st.sidebar.title("Meny")
+    if st.session_state.logged_in and st.session_state.user:
+        st.sidebar.success(f"Innlogget som {st.session_state.user['username']}")
+        medlemskap = "Aktivt" if st.session_state.user.get("is_paid", False) else "Gratis"
+        st.sidebar.caption(f"Medlemskap: {medlemskap}")
+        if st.sidebar.button("🏠 Forside", key="sidebar_home_logged"):
+            st.session_state.mode = "main"
+            st.rerun()
+        if not st.session_state.user.get("is_paid", False):
+            if st.sidebar.button("💎 Aktiver demo-medlemskap", key="sidebar_demo_upgrade"):
+                st.session_state.user["is_paid"] = True
+                update_user_record(st.session_state.user)
+                st.success("Demo-medlemskap aktivert!")
+                st.rerun()
+        if st.sidebar.button("🚪 Logg ut", key="sidebar_logout"):
+            st.session_state.logged_in = False
+            st.session_state.user = None
+            st.session_state.is_paid = False
+            st.session_state.mode = "main"
+            st.rerun()
+    else:
+        if st.sidebar.button("🏠 Forside", key="sidebar_home_public"):
+            st.session_state.mode = "main"
+            st.rerun()
+        if st.sidebar.button("📝 Registrer", key="sidebar_register"):
+            st.session_state.mode = "register"
+            st.rerun()
+        if st.sidebar.button("🔐 Logg inn", key="sidebar_login"):
+            st.session_state.mode = "login"
+            st.rerun()
+
+
+def render_header():
+    st.markdown(APP_CSS, unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div class="hero-card">
+            <h1>🌈 RegnbueMatch</h1>
+            <p>En renere, raskere og mer mobilvennlig datingside med PWA-støtte.</p>
+            <div class="pill-row">
+                <span class="pill">Mobilklar</span>
+                <span class="pill">PWA</span>
+                <span class="pill">Stripe</span>
+                <span class="pill">E-postverifisering</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    col1, col2 = st.columns(2)
+    with col1:
+        st.link_button("📲 Installer appen", "/app/static/index.html", use_container_width=True)
+    with col2:
+        st.link_button("🖼️ Åpne splash/PWA", "/app/static/index.html", use_container_width=True)
+    st.caption("På mobil kan du velge ‘Legg til på startskjerm’, og på PC kan du bruke ‘Installer app’ i nettleseren.")
+
+
+def render_home():
+    stats = st.columns(3)
+    stats[0].metric("Profiler", len(st.session_state.users))
+    stats[1].metric("Online nå", len(ONLINE_SHOWCASE))
+    stats[2].metric("PWA", "Klar")
+
+    if os.path.exists("static/icons/splashscreen.png"):
+        st.image("static/icons/splashscreen.png", use_container_width=True)
+
+    with st.container(border=True):
+        st.subheader("✨ Hvorfor RegnbueMatch?")
+        st.write(
+            "- trygg registrering med e-postkode  \n"
+            "- Stripe-støtte for abonnement  \n"
+            "- matcher, chat og fellesskap  \n"
+            "- installér som app på mobil og PC"
+        )
+
+    st.subheader("🟢 Online nå")
+    for person in ONLINE_SHOWCASE:
+        with st.container(border=True):
+            st.image(person["img"], use_container_width=True)
+            st.markdown(f"**{person['username']}**, {person['age']} år")
+            st.caption(person["bio"])
+            if st.button(f"💜 Vis interesse for {person['username']}", key=f"showcase_{person['username']}"):
+                if st.session_state.logged_in:
+                    st.success(f"Hyggelig! {person['username']} er lagt til i dine forslag.")
+                else:
+                    st.info("Logg inn eller registrer deg for å begynne å chatte.")
+
+
+def render_register():
+    st.subheader("Opprett ny profil")
+    stripe_config_ok, stripe_price_id, app_base_url = handle_payment_status()
+
+    reg_username = st.text_input("Brukernavn", key="reg_user")
+    reg_password = st.text_input("Passord", type="password", key="reg_pass")
+    reg_email = st.text_input("E-postadresse", key="reg_email")
+    reg_phone = st.text_input("Telefonnummer", key="reg_phone")
+    reg_gender = st.selectbox("Kjønn", ["Mann", "Kvinne", "Annet"], key="reg_gender")
+    reg_seeking = st.selectbox("Hva søker du etter?", ["Mann", "Kvinne", "Annet", "Swingers"], key="reg_seeking")
+    reg_age = st.number_input("Alder", min_value=18, max_value=99, value=25, key="reg_age")
+    reg_bio = st.text_area("Om deg selv", key="reg_bio", placeholder="Fortell litt om deg selv, interesser og hva du ser etter.")
+
+    if reg_email and is_email_paid(reg_email):
+        st.session_state.is_paid = True
+        st.success("Denne e-posten har allerede en bekreftet betaling.")
+
+    with st.container(border=True):
+        st.markdown("#### 💎 Abonnement")
+        if st.session_state.is_paid:
+            st.success("Du har aktivt abonnement og tilgang til chat-funksjoner.")
+        else:
+            st.warning("Du kan registrere deg gratis, men abonnement trengs for full chat-tilgang.")
+            if not stripe_config_ok:
+                st.info("Sett `STRIPE_SECRET_KEY` og `STRIPE_PRICE_ID` på Render for å aktivere kjøp.")
+            if not app_base_url:
+                st.info("Sett `APP_BASE_URL` til din Render-URL for korrekt tilbakekobling fra Stripe.")
+            if st.button("Kjøp abonnement (kr 199)", key="buy_subscription", disabled=not (stripe_config_ok and bool(app_base_url))):
+                try:
+                    session_payload = {
+                        "payment_method_types": ["card"],
+                        "line_items": [{"price": stripe_price_id, "quantity": 1}],
+                        "mode": "subscription",
+                        "success_url": f"{app_base_url}/?success=true&session_id={{CHECKOUT_SESSION_ID}}",
+                        "cancel_url": f"{app_base_url}/?canceled=true",
+                    }
+                    if reg_email:
+                        session_payload["customer_email"] = reg_email
+                    session = stripe.checkout.Session.create(**session_payload)
+                    st.link_button("Åpne Stripe-betalingen", session.url, use_container_width=True)
+                except Exception as error:
+                    st.error(f"Stripe-feil: {error}")
+
+    st.markdown("#### ✉️ E-postverifisering")
+    if st.button("Send kode", key="send_code_main_btn"):
+        code = create_verification_code()
+        st.session_state.verification_code = code
+        st.session_state.verification_email = reg_email
+        st.session_state.pending_verification = reg_username or reg_email
+        st.session_state.email_verified = False
+        st.session_state.verification_attempts = 0
+        result = send_verification_email(reg_email, code)
+        if result is True:
+            st.success(f"Kode sendt til {reg_email} 📧")
+        else:
+            st.error(f"Kunne ikke sende e-post: {result}")
+
+    if st.session_state.pending_verification and not st.session_state.email_verified:
+        code_input = st.text_input("Skriv inn koden du har mottatt", key="verify_code")
+        if st.button("Bekreft kode", key="confirm_code_main_btn"):
+            if code_input == st.session_state.verification_code:
+                st.session_state.email_verified = True
+                st.session_state.verification_code = None
+                st.session_state.pending_verification = None
+                st.success("E-post verifisert ✅")
+            else:
+                st.session_state.verification_attempts += 1
+                if st.session_state.verification_attempts >= 3:
+                    reset_verification_state()
+                    st.error("For mange feil forsøk. Be om ny kode.")
+                else:
+                    st.error("Feil kode. Prøv igjen.")
+
+    if not st.session_state.email_verified:
+        st.info("Du må verifisere e-postadressen før du kan registrere profilen.")
+
+    if st.button("✅ Registrer profil", key="register_main_btn", disabled=not st.session_state.email_verified):
+        success, payload = register_user(
+            reg_username,
+            reg_password,
+            reg_gender,
+            reg_age,
+            reg_bio,
+            reg_seeking,
+            email=reg_email,
+            phone=reg_phone,
+        )
+        if success:
+            reset_verification_state()
+            st.session_state.registration_success = True
+            st.session_state.mode = "login"
+            st.rerun()
+        else:
+            st.error(payload)
+
+
+def render_login():
+    st.subheader("Logg inn")
+    login_username = st.text_input("Brukernavn", key="login_user")
+    login_password = st.text_input("Passord", type="password", key="login_pass")
+
+    if st.button("Logg inn", key="login_submit"):
+        user = authenticate_user(login_username, login_password)
+        if user:
+            st.session_state.logged_in = True
+            st.session_state.user = user
+            st.session_state.is_paid = user.get("is_paid", False)
+            st.success(f"Velkommen, {login_username}! 🚀")
+            st.rerun()
+        else:
+            st.error("Feil brukernavn eller passord.")
+
+
+def render_matches_tab():
+    st.header("Dine matcher")
+    matches = find_matches(st.session_state.user)
+    if not matches:
+        st.info("Ingen matcher funnet ennå.")
+        return
+
+    for match in matches:
+        with st.container(border=True):
+            st.image(f"https://api.dicebear.com/7.x/adventurer/svg?seed={match['username']}", width=80)
+            st.markdown(f"**{match['username']}**, {match['age']} år")
+            st.caption(match['bio'])
+            if st.button(f"💘 Match med {match['username']}", key=f"match_{match['username']}"):
+                add_match(st.session_state.user['username'], match['username'])
+                st.success(f"Du har matchet med {match['username']}!")
+                st.rerun()
+
+
+def render_online_tab():
+    st.header("Online nå 🟢")
+    for person in ONLINE_SHOWCASE:
+        with st.container(border=True):
+            st.image(person["img"], use_container_width=True)
+            st.markdown(f"**{person['username']}** · {person['age']} år")
+            st.caption(person["bio"])
+
+
+def render_chat_tab():
+    st.header("Chat med matcher")
+    my_matches = st.session_state.user.get("matches", [])
+    if not my_matches:
+        st.info("Du har ingen matcher å chatte med ennå.")
+        return
+
+    chat_partner = st.selectbox("Velg match", my_matches, key="chat_partner_select")
+    for item in get_chat(st.session_state.user['username'], chat_partner):
+        role = "user" if item["sender"] == st.session_state.user['username'] else "assistant"
+        with st.chat_message(role):
+            st.write(item["message"])
+
+    message = st.text_input("Skriv melding", key="private_message_input")
+    if st.button("Send melding", key="send_chat_btn"):
+        send_message(st.session_state.user['username'], chat_partner, message)
+        st.rerun()
+
+
+def render_group_chat_tab():
+    st.header("Felles Chat (kun for betalende)")
+    for item in get_group_chat():
+        role = "user" if item["sender"] == st.session_state.user['username'] else "assistant"
+        with st.chat_message(role):
+            st.write(f"**{item['sender']}**: {item['message']}")
+
+    group_message = st.text_input("Skriv melding til felleschatten", key="group_message_input")
+    if st.button("Send til felles chat", key="send_group_chat_btn"):
+        send_group_message(st.session_state.user['username'], group_message)
+        st.rerun()
+
+
+def render_ai_tab():
+    st.header("AI-assistent")
+    question = st.text_input("Spør om dating, sikkerhet eller profiltekst", key="ask_ai_input")
+    if st.button("Spør AI", key="ask_ai_btn"):
+        st.info(ai_assistant_response(question))
+
+
+def render_dashboard():
+    user = st.session_state.user
+    st.success(f"Velkommen tilbake, {user['username']}!")
+
+    stats = st.columns(3)
+    stats[0].metric("Matcher", len(user.get("matches", [])))
+    stats[1].metric("Medlemskap", "Aktivt" if user.get("is_paid", False) else "Gratis")
+    stats[2].metric("Status", "Online")
+
+    tab_labels = ["Matcher", "Online nå", "Chat", "AI-assistent"]
+    if user.get("is_paid", False):
+        tab_labels.insert(3, "Felles Chat")
+
+    tabs = st.tabs(tab_labels)
+    tab_index = 0
+    with tabs[tab_index]:
+        render_matches_tab()
+    tab_index += 1
+    with tabs[tab_index]:
+        render_online_tab()
+    tab_index += 1
+    with tabs[tab_index]:
+        render_chat_tab()
+    if user.get("is_paid", False):
+        tab_index += 1
+        with tabs[tab_index]:
+            render_group_chat_tab()
+    with tabs[-1]:
+        render_ai_tab()
+
+
+def main():
+    render_sidebar()
+    render_header()
+
+    if st.session_state.registration_success:
+        st.success("Bruker registrert! Du kan nå logge inn med den nye profilen.")
+        st.session_state.registration_success = False
+
+    if st.session_state.logged_in and st.session_state.user:
+        render_dashboard()
+        return
+
+    if st.session_state.mode == "register":
+        render_register()
+    elif st.session_state.mode == "login":
+        render_login()
+    else:
+        render_home()
+
+
+init_session_state()
+main()

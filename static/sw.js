@@ -1,11 +1,13 @@
-const CACHE_NAME = 'regnbuematch-pwa-v1';
+const CACHE_NAME = 'regnbuematch-pwa-v2';
 const ASSETS = [
   './',
   './index.html',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
-  './icons/apple-touch-icon.png'
+  './icons/maskable-icon-512.png',
+  './icons/apple-touch-icon.png',
+  './icons/splashscreen.png'
 ];
 
 self.addEventListener('install', (event) => {
