@@ -103,15 +103,58 @@ APP_CSS = """
 }
 .hero-card {
     background: linear-gradient(135deg, #ff4fa3 0%, #a259c6 55%, #4b8bff 100%);
-    border-radius: 24px;
-    padding: 22px 18px;
+    border-radius: 28px;
+    padding: 24px 20px;
     color: #ffffff;
     box-shadow: 0 18px 38px rgba(91, 36, 122, 0.22);
     margin-bottom: 14px;
+    position: relative;
+    overflow: hidden;
 }
-.hero-card h1, .hero-card p {
+.hero-card::after {
+    content: "";
+    position: absolute;
+    inset: auto -60px -70px auto;
+    width: 180px;
+    height: 180px;
+    background: rgba(255,255,255,0.12);
+    border-radius: 50%;
+}
+.hero-grid {
+    display: grid;
+    grid-template-columns: 1.35fr 0.85fr;
+    gap: 14px;
+    align-items: center;
+}
+.eyebrow {
+    display: inline-block;
+    margin-bottom: 8px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.16);
+    border: 1px solid rgba(255,255,255,0.26);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+}
+.hero-card h1, .hero-card p, .hero-card strong, .hero-card span {
     color: #ffffff !important;
     margin: 0;
+}
+.hero-preview {
+    display: grid;
+    gap: 10px;
+}
+.hero-mini-card {
+    background: rgba(255,255,255,0.14);
+    border: 1px solid rgba(255,255,255,0.22);
+    border-radius: 18px;
+    padding: 12px;
+    backdrop-filter: blur(8px);
+}
+.hero-mini-card strong {
+    display: block;
+    margin-bottom: 4px;
 }
 .pill-row {
     display: flex;
@@ -139,12 +182,23 @@ input::placeholder, textarea::placeholder {
     color: #1d1230 !important;
     border-radius: 12px !important;
 }
-.stButton > button, .stLinkButton > a {
+.stButton > button {
     width: 100%;
     border-radius: 14px !important;
     min-height: 48px;
     font-size: 1rem;
-    font-weight: 600;
+    font-weight: 700;
+    border: none !important;
+    background: linear-gradient(135deg, #ff4fa3 0%, #8b5cf6 100%) !important;
+    color: #ffffff !important;
+    box-shadow: 0 10px 24px rgba(139, 92, 246, 0.22);
+}
+.stLinkButton > a {
+    width: 100%;
+    border-radius: 14px !important;
+    min-height: 48px;
+    font-size: 1rem;
+    font-weight: 700;
 }
 .stImage img {
     border-radius: 18px;
@@ -154,18 +208,48 @@ input::placeholder, textarea::placeholder {
     border-right: 1px solid rgba(162, 89, 198, 0.12);
 }
 div[data-testid="stMetric"] {
-    background: rgba(255,255,255,0.72);
+    background: rgba(255,255,255,0.78);
     border: 1px solid rgba(162, 89, 198, 0.16);
     border-radius: 16px;
     padding: 10px 12px;
 }
-.profile-card {
-    background: rgba(255,255,255,0.88);
+.profile-card, .soft-card, .feature-item, .how-step {
+    background: rgba(255,255,255,0.9);
     border-radius: 18px;
     padding: 14px;
     border: 1px solid rgba(162,89,198,0.14);
     box-shadow: 0 8px 24px rgba(69, 38, 100, 0.08);
     margin-bottom: 12px;
+}
+.card-badge {
+    display: inline-block;
+    padding: 5px 9px;
+    border-radius: 999px;
+    background: #f5edff;
+    color: #7c3aed;
+    font-size: 0.78rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+.feature-grid, .how-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin: 10px 0 6px;
+}
+.feature-item h4, .how-step h4 {
+    margin-bottom: 6px;
+}
+.cta-card {
+    background: linear-gradient(135deg, rgba(255,79,163,0.12) 0%, rgba(75,139,255,0.12) 100%);
+    border: 1px solid rgba(162,89,198,0.18);
+    border-radius: 22px;
+    padding: 16px;
+    margin-top: 10px;
+}
+.tiny-note {
+    color: #6b5a85;
+    font-size: 0.88rem;
 }
 @media (max-width: 768px) {
     .block-container {
@@ -176,6 +260,9 @@ div[data-testid="stMetric"] {
     .hero-card {
         padding: 18px 14px;
         border-radius: 20px;
+    }
+    .hero-grid, .feature-grid, .how-grid {
+        grid-template-columns: 1fr;
     }
     h1 { font-size: 1.8rem !important; }
     h2 { font-size: 1.3rem !important; }
@@ -533,23 +620,41 @@ def render_header():
     st.markdown(
         """
         <div class="hero-card">
-            <h1>🌈 RegnbueMatch</h1>
-            <p>En renere, raskere og mer mobilvennlig datingside med PWA-støtte.</p>
-            <div class="pill-row">
-                <span class="pill">Mobilklar</span>
-                <span class="pill">PWA</span>
-                <span class="pill">Stripe</span>
-                <span class="pill">E-postverifisering</span>
+            <div class="hero-grid">
+                <div>
+                    <span class="eyebrow">TRYGG MATCHING · NORSK PWA</span>
+                    <h1>🌈 RegnbueMatch</h1>
+                    <p>Dating-appen som føles varm, enkel og ekte — laget for raske matcher, trygge samtaler og fin kjemi på mobil.</p>
+                    <div class="pill-row">
+                        <span class="pill">Verifisert e-post</span>
+                        <span class="pill">Chat & fellesskap</span>
+                        <span class="pill">Installerbar app</span>
+                    </div>
+                </div>
+                <div class="hero-preview">
+                    <div class="hero-mini-card">
+                        <strong>✨ Kveldens vibe</strong>
+                        <span>Rolige profiler, raske svar og mindre støy.</span>
+                    </div>
+                    <div class="hero-mini-card">
+                        <strong>💬 Klar for samtale</strong>
+                        <span>Finn noen å skrive med på under ett minutt.</span>
+                    </div>
+                </div>
             </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns([1, 1, 0.9])
     with col1:
         st.link_button("📲 Installer appen", "/app/static/index.html", use_container_width=True)
     with col2:
-        st.link_button("🖼️ Åpne splash/PWA", "/app/static/index.html", use_container_width=True)
+        st.link_button("🖼️ Se app-preview", "/app/static/index.html", use_container_width=True)
+    with col3:
+        if st.button("💜 Start nå", key="hero_start_now"):
+            st.session_state.mode = "dashboard" if st.session_state.logged_in else "register"
+            st.rerun()
     st.caption("På mobil kan du velge ‘Legg til på startskjerm’, og på PC kan du bruke ‘Installer app’ i nettleseren.")
 
 
@@ -557,31 +662,103 @@ def render_home():
     stats = st.columns(3)
     stats[0].metric("Profiler", len(st.session_state.users))
     stats[1].metric("Online nå", len(ONLINE_SHOWCASE))
-    stats[2].metric("PWA", "Klar")
+    stats[2].metric("Stemning", "Trygg ✨")
 
-    if os.path.exists("static/icons/splashscreen.png"):
-        st.image("static/icons/splashscreen.png", use_container_width=True)
-
-    with st.container(border=True):
-        st.subheader("✨ Hvorfor RegnbueMatch?")
-        st.write(
-            "- trygg registrering med e-postkode  \n"
-            "- Stripe-støtte for abonnement  \n"
-            "- matcher, chat og fellesskap  \n"
-            "- installér som app på mobil og PC"
+    intro_col, preview_col = st.columns([1.15, 0.85], gap="large")
+    with intro_col:
+        st.markdown(
+            """
+            <div class="soft-card">
+                <span class="card-badge">NY FORSIDE</span>
+                <h3>Føles mer som en ekte datingside</h3>
+                <p>RegnbueMatch er laget for rolige førsteinntrykk, verifiserte profiler og en enklere start på samtalen — uten rot og med fokus på mobil.</p>
+                <div class="feature-grid">
+                    <div class="feature-item">
+                        <h4>💌 Trygg start</h4>
+                        <p>E-postkode gir en renere og mer seriøs onboarding.</p>
+                    </div>
+                    <div class="feature-item">
+                        <h4>⚡ Rask matching</h4>
+                        <p>Se profiler, vis interesse og kom raskt i gang med chat.</p>
+                    </div>
+                    <div class="feature-item">
+                        <h4>📲 App-følelse</h4>
+                        <p>Installer på startskjermen og bruk den som en ekte app.</p>
+                    </div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
+    with preview_col:
+        if os.path.exists("static/icons/splashscreen.png"):
+            st.image("static/icons/splashscreen.png", use_container_width=True)
+
+    st.markdown(
+        """
+        <div class="soft-card">
+            <span class="card-badge">SLIK FUNGERER DET</span>
+            <div class="how-grid">
+                <div class="how-step">
+                    <h4>1. Lag profil</h4>
+                    <p>Velg hvem du er, hva du søker, og skriv en kort bio.</p>
+                </div>
+                <div class="how-step">
+                    <h4>2. Finn kjemi</h4>
+                    <p>Se hvem som er online, og få forslag som passer deg.</p>
+                </div>
+                <div class="how-step">
+                    <h4>3. Start praten</h4>
+                    <p>Chat privat eller bli med i fellesskapet når du er klar.</p>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if not st.session_state.logged_in:
+        cta1, cta2 = st.columns(2)
+        with cta1:
+            if st.button("💜 Opprett gratis profil", key="home_register_cta"):
+                st.session_state.mode = "register"
+                st.rerun()
+        with cta2:
+            if st.button("🔐 Jeg har allerede konto", key="home_login_cta"):
+                st.session_state.mode = "login"
+                st.rerun()
 
     st.subheader("🟢 Online nå")
-    for person in ONLINE_SHOWCASE:
-        with st.container(border=True):
+    profile_cols = st.columns(len(ONLINE_SHOWCASE))
+    for index, person in enumerate(ONLINE_SHOWCASE):
+        with profile_cols[index]:
             st.image(person["img"], use_container_width=True)
-            st.markdown(f"**{person['username']}**, {person['age']} år")
-            st.caption(person["bio"])
-            if st.button(f"💜 Vis interesse for {person['username']}", key=f"showcase_{person['username']}"):
+            st.markdown(
+                f"""
+                <div class="profile-card">
+                    <span class="card-badge">Online nå</span>
+                    <h4>{person['username']}, {person['age']}</h4>
+                    <p>{person['bio']}</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            if st.button(f"💫 Vis interesse", key=f"showcase_{person['username']}"):
                 if st.session_state.logged_in:
                     st.success(f"Hyggelig! {person['username']} er lagt til i dine forslag.")
                 else:
                     st.info("Logg inn eller registrer deg for å begynne å chatte.")
+
+    st.markdown(
+        """
+        <div class="cta-card">
+            <h3>💜 Klar for første match?</h3>
+            <p>Installer appen, opprett profil og gjør forsiden om til din nye favorittplass for trygge samtaler.</p>
+            <p class="tiny-note">Perfekt på mobil, enkel på desktop, og bygget for raske førsteinntrykk.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def render_register():
