@@ -130,13 +130,13 @@ for key, default in [
 
 # ---------------- REGISTER ----------------
 if st.session_state.mode == "register":
-	st.title("Registrer deg")
+	st.write("---")
 
 	username = st.text_input("Brukernavn")
 	password = st.text_input("Passord", type="password")
 	email = st.text_input("E-post")
 
-	st.write("---")
+	st.title("Registrer deg")
 
 	# SEND KODE
 	if st.button("Send verifiseringskode"):
