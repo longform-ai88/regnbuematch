@@ -735,11 +735,16 @@ def register_user(username, password, gender, age, bio, seeking, email, phone):
     return True, new_user
 
 
-def authenticate_user(username, password):
-    username = (username or "").strip().lower()
+def authenticate_user(identifier, password):
+    identifier = (identifier or "").strip().lower()
+    password = password or ""
     for user in st.session_state.users:
-        if user["username"].lower() == username and user["password"] == password:
-            return normalize_user(user)
+        normalized_user = normalize_user(user)
+        if (
+            normalized_user["password"] == password
+            and identifier in {normalized_user["username"].strip().lower(), normalized_user["email"].strip().lower()}
+        ):
+            return normalized_user
     return None
 
 
@@ -1173,19 +1178,20 @@ def render_register():
 
 def render_login():
     st.subheader("Logg inn")
-    login_username = st.text_input("Brukernavn", key="login_user")
+    login_identifier = st.text_input("Brukernavn eller e-post", key="login_user")
     login_password = st.text_input("Passord", type="password", key="login_pass")
+    st.caption("Du kan logge inn med enten brukernavn eller e-postadressen du registrerte deg med.")
 
     if st.button("Logg inn", key="login_submit"):
-        user = authenticate_user(login_username, login_password)
+        user = authenticate_user(login_identifier, login_password)
         if user:
             st.session_state.logged_in = True
             st.session_state.user = user
             st.session_state.is_paid = user.get("is_paid", False)
-            st.success(f"Velkommen, {login_username}! 🚀")
+            st.success(f"Velkommen, {user['username']}! 🚀")
             st.rerun()
         else:
-            st.error("Feil brukernavn eller passord.")
+            st.error("Feil brukernavn/e-post eller passord.")
 
 
 def render_matches_tab():
@@ -1290,7 +1296,7 @@ def main():
     render_header()
 
     if st.session_state.registration_success:
-        st.success("Bruker registrert! Du kan nå logge inn med den nye profilen.")
+        st.success("Bruker registrert! Du kan nå logge inn med brukernavn eller e-post.")
         for level, message in st.session_state.post_registration_messages:
             getattr(st, level, st.info)(message)
         st.session_state.post_registration_messages = []
