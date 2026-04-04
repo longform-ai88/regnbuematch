@@ -832,6 +832,7 @@ def init_session_state():
         "dashboard_section": "Finn noen",
         "pending_dashboard_section": None,
         "active_chat_user": None,
+        "discovery_index": 0,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -1251,9 +1252,10 @@ def find_matches(current_user):
     ][:5]
 
 
-def add_match(current_username, other_username):
+def add_match(current_username, other_username, note=""):
     current_user = get_user_by_username(current_username) or {}
     current_user = normalize_user(current_user)
+    note_text = (note or "").strip()
     if other_username in current_user.get("matches", []):
         return True, f"Du og {other_username} er allerede en match 💬"
 
@@ -1301,14 +1303,23 @@ def add_match(current_username, other_username):
             f"Du og {current_username} likte hverandre. Åpne inboxen for å starte chat.",
             kind="match",
         )
+        if note_text:
+            send_message(current_username, other_username, note_text)
+            return True, f"Det er en match med {other_username}! Hilsenen din ble sendt i chatten 💬"
         return True, f"Det er en match med {other_username}! Åpne inboxen og start chatten 💜"
+
+    like_message = f"{current_username} likte profilen din. Sjekk inboxen for å svare."
+    if note_text:
+        like_message = f"{current_username} likte profilen din og skrev: “{note_text[:100]}”"
 
     notify_user_event(
         other_username,
         "Nytt like 💜",
-        f"{current_username} likte profilen din. Sjekk inboxen for å svare.",
+        like_message,
         kind="like",
     )
+    if note_text:
+        return False, f"Like sendt til {other_username} 💌 Hilsenen din ble lagt ved."
     return False, f"Like sendt til {other_username} 💌"
 
 
@@ -1971,22 +1982,21 @@ def render_matches_tab():
     suggestions = find_matches(current_user)
 
     st.header("Finn noen")
-    st.caption("Det er enkelt: se profil → trykk `Lik` → hvis dere liker hverandre, havner chatten i `Inbox`.")
+    st.caption("Nå vises én profil om gangen med store bilder og tydelige valg — mye mer som Hinge.")
 
     if incoming_like_users:
-        st.subheader("💜 Personer som liker deg")
-        for admirer in incoming_like_users[:3]:
-            with st.container(border=True):
-                image_col, info_col = st.columns([0.34, 0.66], gap="medium")
-                with image_col:
+        st.subheader("💜 Liker deg nå")
+        like_cols = st.columns(min(2, len(incoming_like_users)))
+        for index, admirer in enumerate(incoming_like_users[:2]):
+            with like_cols[index % len(like_cols)]:
+                with st.container(border=True):
                     st.image(get_profile_image(admirer), use_container_width=True)
-                with info_col:
-                    st.markdown(f"## {admirer['username']}, {admirer['age']}")
+                    st.markdown(f"### {admirer['username']}, {admirer['age']}")
                     st.caption(admirer.get('bio') or 'Vil gjerne bli kjent med deg.')
                     st.write(f"{admirer.get('gender', 'Annet')} · Søker {admirer.get('seeking', 'Annet')}")
-                    render_other_user_profile_preview(admirer, f"top_like_preview_{admirer['username']}")
                     if st.button(f"💘 Lik tilbake {admirer['username']}", key=f"top_like_back_{admirer['username']}"):
                         made_match, message = add_match(st.session_state.user['username'], admirer['username'])
+                        st.session_state.discovery_index = 0
                         if made_match:
                             st.success(message)
                         else:
@@ -1997,27 +2007,68 @@ def render_matches_tab():
         st.info("Ingen nye profiler akkurat nå. Sjekk inboxen eller kom tilbake litt senere.")
         return
 
-    st.subheader("✨ Utforsk profiler")
-    for match in suggestions:
-        with st.container(border=True):
-            top_col, info_col = st.columns([0.34, 0.66], gap="medium")
-            with top_col:
-                st.image(get_profile_image(match), use_container_width=True)
-            with info_col:
-                badge = "💘 Liker deg" if match['username'] in incoming_like_names else "✨ Ny profil"
-                st.markdown(f"**{badge}**")
-                st.markdown(f"## {match['username']}, {match['age']}")
-                st.caption(match['bio'])
-                st.write(f"{match.get('gender', 'Annet')} · Søker {match.get('seeking', 'Annet')}")
-                render_other_user_profile_preview(match, f"browse_preview_{match['username']}")
-                button_label = "💘 Lik tilbake" if match['username'] in incoming_like_names else f"💜 Lik {match['username']}"
-                if st.button(button_label, key=f"match_{match['username']}"):
-                    made_match, message = add_match(st.session_state.user['username'], match['username'])
-                    if made_match:
-                        st.success(message)
-                    else:
-                        st.info(message)
-                    st.rerun()
+    suggestion_total = len(suggestions)
+    card_index = st.session_state.get("discovery_index", 0) % suggestion_total
+    profile = suggestions[card_index]
+    gallery_images = get_profile_gallery_images(profile)
+    badge = "💘 Denne personen liker deg allerede" if profile['username'] in incoming_like_names else "✨ Anbefalt for deg"
+
+    st.subheader("✨ Neste profil")
+    st.caption(f"Profil {card_index + 1} av {suggestion_total}")
+
+    with st.container(border=True):
+        st.markdown(f"**{badge}**")
+        if len(gallery_images) > 1:
+            st.image(gallery_images, use_container_width=True)
+            st.caption(f"{len(gallery_images)} bilder på profilen")
+        else:
+            st.image(gallery_images[0], use_container_width=True)
+
+        st.markdown(f"## {profile['username']}, {profile['age']}")
+        st.caption(profile.get('bio') or 'Klar for å bli kjent med noen nye 🌈')
+
+        detail_cols = st.columns(2, gap="medium")
+        with detail_cols[0]:
+            with st.container(border=True):
+                st.markdown("**Om personen**")
+                st.write(profile.get('gender', 'Annet'))
+            with st.container(border=True):
+                st.markdown("**Vibe**")
+                st.write(profile.get('bio') or 'Rolig, hyggelig og klar for en god samtale.')
+        with detail_cols[1]:
+            with st.container(border=True):
+                st.markdown("**Ser etter**")
+                st.write(profile.get('seeking', 'Annet'))
+            with st.container(border=True):
+                st.markdown("**Status**")
+                st.write("Liker deg allerede 💘" if profile['username'] in incoming_like_names else "Ny profil ✨")
+
+        render_other_user_profile_preview(profile, f"browse_preview_{profile['username']}")
+
+        intro_message = st.text_input(
+            f"Send en liten hilsen til {profile['username']} (valgfritt)",
+            key=f"discovery_note_{profile['username']}",
+            placeholder="Hei! Du virker veldig hyggelig 😊",
+        )
+
+        action_cols = st.columns(3, gap="small")
+        if action_cols[0].button("👋 Neste profil", key=f"skip_{profile['username']}_{card_index}"):
+            st.session_state.discovery_index = (card_index + 1) % suggestion_total
+            st.rerun()
+
+        like_label = "💘 Lik tilbake" if profile['username'] in incoming_like_names else "💜 Lik profil"
+        if action_cols[1].button(like_label, key=f"match_{profile['username']}_{card_index}"):
+            made_match, message = add_match(st.session_state.user['username'], profile['username'], intro_message)
+            st.session_state.discovery_index = card_index
+            if made_match:
+                st.success(message)
+            else:
+                st.info(message)
+            st.rerun()
+
+        if action_cols[2].button("📥 Åpne Inbox", key=f"open_inbox_from_{profile['username']}_{card_index}"):
+            set_dashboard_section("Inbox")
+            st.rerun()
 
 
 def render_inbox_tab():
@@ -2155,9 +2206,9 @@ def render_dashboard():
 
     st.markdown("### Slik bruker du appen")
     st.markdown(
-        "1. **Finn noen** og trykk `Lik` på profiler du liker.  \n"
-        "2. Se **Inbox** når du får likes, matcher eller meldinger.  \n"
-        "3. Oppdater **Min profil** når du vil legge til bilde eller bio."
+        "1. **Finn noen** viser én profil om gangen — trykk `Lik profil` eller `Neste profil`.  \n"
+        "2. Se **Inbox** når du får likes, matcher eller meldinger, og svar direkte der.  \n"
+        "3. Oppdater **Min profil** når du vil legge til flere bilder eller bio."
     )
 
     section_options = ["Finn noen", "Inbox", "Min profil"]
