@@ -1342,8 +1342,8 @@ def render_header():
             <div class="hero-grid">
                 <div>
                     <span class="eyebrow">TRYGG MATCHING · NORSK PWA</span>
-                    <h1>🌈 RegnbueMatch</h1>
-                    <p>Dating-appen som føles varm, enkel og ekte — laget for raske matcher, trygge samtaler og fin kjemi på mobil.</p>
+                    <h1>🌈 La oss bygge et fargerikt fellesskap sammen</h1>
+                    <p>– og skape plass til flere i laget vårt.</p>
                     <div class="pill-row">
                         <span class="pill">Verifisert e-post</span>
                         <span class="pill">Chat & fellesskap</span>
@@ -1384,80 +1384,10 @@ def render_home():
     stats[1].metric("Online nå", len(ONLINE_SHOWCASE))
     stats[2].metric("Early access", f"{spots_left} igjen")
 
-    if spots_left > 0:
-        st.success(f"🎉 Fase 2-tilbud: De første {EARLY_ACCESS_LIMIT} verifiserte profilene får gratis full tilgang. {spots_left} plasser igjen.")
-    else:
-        st.info("Early access er fulltegnet. Nye brukere kan fortsatt registrere seg og oppgradere til abonnement.")
-
-    intro_col, preview_col = st.columns([1.15, 0.85], gap="large")
-    with intro_col:
-        st.markdown(
-            """
-            <div class="soft-card">
-                <span class="card-badge">NY FORSIDE</span>
-                <h3>Føles mer som en ekte datingside</h3>
-                <p>RegnbueMatch er laget for rolige førsteinntrykk, verifiserte profiler og en enklere start på samtalen — uten rot og med fokus på mobil.</p>
-                <div class="feature-grid">
-                    <div class="feature-item">
-                        <h4>💌 Trygg start</h4>
-                        <p>E-postkode gir en renere og mer seriøs onboarding.</p>
-                    </div>
-                    <div class="feature-item">
-                        <h4>⚡ Rask matching</h4>
-                        <p>Se profiler, vis interesse og kom raskt i gang med chat.</p>
-                    </div>
-                    <div class="feature-item">
-                        <h4>📲 App-følelse</h4>
-                        <p>Installer på startskjermen og bruk den som en ekte app.</p>
-                    </div>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with preview_col:
-        splashscreen_path = os.path.join(STATIC_DIR, "icons", "splashscreen.png")
-        if os.path.exists(splashscreen_path):
-            st.image(splashscreen_path, use_container_width=True)
-
-    st.markdown(
-        """
-        <div class="soft-card">
-            <span class="card-badge">SLIK FUNGERER DET</span>
-            <div class="how-grid">
-                <div class="how-step">
-                    <h4>1. Lag profil</h4>
-                    <p>Velg hvem du er, hva du søker, og skriv en kort bio.</p>
-                </div>
-                <div class="how-step">
-                    <h4>2. Finn kjemi</h4>
-                    <p>Se hvem som er online, og få forslag som passer deg.</p>
-                </div>
-                <div class="how-step">
-                    <h4>3. Start praten</h4>
-                    <p>Chat privat eller bli med i fellesskapet når du er klar.</p>
-                </div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    if not st.session_state.logged_in:
-        cta1, cta2 = st.columns(2)
-        with cta1:
-            if st.button("💜 Opprett gratis profil", key="home_register_cta"):
-                st.session_state.mode = "register"
-                st.rerun()
-        with cta2:
-            if st.button("🔐 Jeg har allerede konto", key="home_login_cta"):
-                st.session_state.mode = "login"
-                st.rerun()
-
     st.subheader("🟢 Online nå")
-    profile_cols = st.columns(len(ONLINE_SHOWCASE))
+    online_cols = st.columns(len(ONLINE_SHOWCASE))
     for index, person in enumerate(ONLINE_SHOWCASE):
-        with profile_cols[index]:
+        with online_cols[index]:
             st.image(person["img"], use_container_width=True)
             st.markdown(
                 f"""
@@ -1480,12 +1410,82 @@ def render_home():
                 else:
                     st.info("Logg inn eller registrer deg for å begynne å chatte.")
 
+    if spots_left > 0:
+        st.success(f"🎉 Fase 2-tilbud: De første {EARLY_ACCESS_LIMIT} verifiserte profilene får gratis full tilgang. {spots_left} plasser igjen.")
+    else:
+        st.info("Early access er fulltegnet. Nye brukere kan fortsatt registrere seg og oppgradere til abonnement.")
+
+    intro_col, preview_col = st.columns([1.15, 0.85], gap="large")
+    with intro_col:
+        st.markdown(
+            """
+            <div class="soft-card">
+                <span class="card-badge">VELKOMMEN</span>
+                <h3>Et varmere og enklere fellesskap</h3>
+                <p>RegnbueMatch skal være et trygt sted for nye forbindelser, gode samtaler og et mer inkluderende miljø for alle som blir med.</p>
+                <div class="feature-grid">
+                    <div class="feature-item">
+                        <h4>💌 Trygg start</h4>
+                        <p>Verifisering gjør fellesskapet mer ekte og seriøst.</p>
+                    </div>
+                    <div class="feature-item">
+                        <h4>🌈 Fellesskap</h4>
+                        <p>Bygg nettverk, finn matcher og møt flere som passer deg.</p>
+                    </div>
+                    <div class="feature-item">
+                        <h4>📲 Enkelt å bruke</h4>
+                        <p>Alt viktig er samlet på ett sted og lett å forstå.</p>
+                    </div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with preview_col:
+        splashscreen_path = os.path.join(STATIC_DIR, "icons", "splashscreen.png")
+        if os.path.exists(splashscreen_path):
+            st.image(splashscreen_path, use_container_width=True)
+
+    st.markdown(
+        """
+        <div class="soft-card">
+            <span class="card-badge">SLIK FUNGERER DET</span>
+            <div class="how-grid">
+                <div class="how-step">
+                    <h4>1. Lag profil</h4>
+                    <p>Opprett profil og vis hvem du er.</p>
+                </div>
+                <div class="how-step">
+                    <h4>2. Finn noen</h4>
+                    <p>Se hvem som er online og send likes.</p>
+                </div>
+                <div class="how-step">
+                    <h4>3. Start praten</h4>
+                    <p>Når det blir match, dukker chatten opp i inboxen.</p>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if not st.session_state.logged_in:
+        cta1, cta2 = st.columns(2)
+        with cta1:
+            if st.button("💜 Opprett gratis profil", key="home_register_cta"):
+                st.session_state.mode = "register"
+                st.rerun()
+        with cta2:
+            if st.button("🔐 Jeg har allerede konto", key="home_login_cta"):
+                st.session_state.mode = "login"
+                st.rerun()
+
     st.markdown(
         """
         <div class="cta-card">
-            <h3>💜 Klar for første match?</h3>
-            <p>Installer appen, opprett profil og gjør forsiden om til din nye favorittplass for trygge samtaler.</p>
-            <p class="tiny-note">Perfekt på mobil, enkel på desktop, og bygget for raske førsteinntrykk.</p>
+            <h3>💜 Klar til å bli med?</h3>
+            <p>Opprett profil, bli synlig i fellesskapet og start samtaler med folk som matcher deg.</p>
+            <p class="tiny-note">Enklere, varmere og mer inkluderende – rett fra mobilen eller PC.</p>
         </div>
         """,
         unsafe_allow_html=True,
