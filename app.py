@@ -1701,14 +1701,14 @@ def render_profile_tab():
         st.caption(user.get("bio") or "Legg til en bio for å fortelle litt om deg selv.")
         st.write(f"**Kjønn:** {user.get('gender', 'Annet')}")
         st.write(f"**Søker:** {user.get('seeking', 'Annet')}")
-        st.write(f"**Telefon:** {user.get('phone') or 'Ikke lagt til ennå'}")
         st.write(f"**Profilstatus:** {'Komplett ✅' if is_profile_complete(user) else 'Mangler bilde/info'}")
+        st.caption("🔒 Telefonnummer og e-post er private og vises ikke til andre brukere.")
 
     with form_col:
         with st.form("profile_edit_form"):
             gender_options = ["Mann", "Kvinne", "Annet"]
             seeking_options = ["Mann", "Kvinne", "Annet", "Swingers"]
-            edited_phone = st.text_input("Telefonnummer", value=user.get("phone", ""))
+            edited_phone = st.text_input("Telefonnummer (privat)", value=user.get("phone", ""))
             edited_age = st.number_input("Alder", min_value=18, max_value=99, value=int(user.get("age", 25)))
             edited_gender = st.selectbox(
                 "Kjønn",
