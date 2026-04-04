@@ -15,11 +15,14 @@ import stripe
 load_dotenv()
 st.set_page_config(page_title="RegnbueMatch", page_icon="🌈", layout="centered")
 
-USERS_FILE = "users.json"
-PAID_EMAILS_FILE = "paid_emails.json"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+USERS_FILE = os.path.join(BASE_DIR, "users.json")
+PAID_EMAILS_FILE = os.path.join(BASE_DIR, "paid_emails.json")
 DEFAULT_FROM_EMAIL = "noreply@longform-ai88.com"
 DEFAULT_FROM_NAME = os.getenv("RESEND_FROM_NAME", "RegnbueMatch").strip() or "RegnbueMatch"
 ADMIN_NOTIFICATION_EMAIL = os.getenv("ADMIN_NOTIFICATION_EMAIL", "").strip()
+EARLY_ACCESS_LIMIT = 50
 
 DEMO_PROFILES = [
     {
@@ -71,6 +74,9 @@ DEMO_PROFILES = [
         "is_paid": True,
     },
 ]
+
+DEMO_USERNAMES = {user["username"].strip().lower() for user in DEMO_PROFILES}
+DEMO_EMAILS = {(user.get("email") or "").strip().lower() for user in DEMO_PROFILES}
 
 ONLINE_SHOWCASE = [
     {
@@ -321,6 +327,7 @@ def is_email_paid(email):
 def normalize_user(user):
     username = user.get("username", "Bruker")
     email = (user.get("email") or f"{username.lower().replace(' ', '')}@example.com").lower()
+    free_access_granted = bool(user.get("free_access_granted", False))
     return {
         "username": username,
         "password": user.get("password", "pass123"),
@@ -331,8 +338,57 @@ def normalize_user(user):
         "age": int(user.get("age", 25)),
         "bio": user.get("bio", "Klar for nye matcher 🌈"),
         "matches": list(dict.fromkeys(user.get("matches", []))),
-        "is_paid": bool(user.get("is_paid", False) or is_email_paid(email)),
+        "free_access_granted": free_access_granted,
+        "is_paid": bool(user.get("is_paid", False) or free_access_granted or is_email_paid(email)),
     }
+
+
+def is_demo_user(user):
+    username = (user.get("username") or "").strip().lower()
+    email = (user.get("email") or "").strip().lower()
+    return username in DEMO_USERNAMES or email in DEMO_EMAILS
+
+
+def grant_early_access(users):
+    early_access_count = 0
+    updated_users = []
+
+    for raw_user in users:
+        user = normalize_user(raw_user)
+        if is_demo_user(user):
+            updated_users.append(user)
+            continue
+
+        if user.get("free_access_granted", False):
+            early_access_count += 1
+        elif not is_email_paid(user["email"]) and early_access_count < EARLY_ACCESS_LIMIT:
+            user["free_access_granted"] = True
+            user["is_paid"] = True
+            early_access_count += 1
+
+        updated_users.append(user)
+
+    return updated_users
+
+
+def count_early_access_users(users=None):
+    users = users if users is not None else st.session_state.get("users", [])
+    return sum(
+        1
+        for user in users
+        if normalize_user(user).get("free_access_granted", False) and not is_demo_user(user)
+    )
+
+
+def early_access_spots_left(users=None):
+    return max(0, EARLY_ACCESS_LIMIT - count_early_access_users(users))
+
+
+def get_membership_label(user):
+    user = normalize_user(user or {})
+    if user.get("free_access_granted", False):
+        return "Gratis Early Access"
+    return "Aktivt" if user.get("is_paid", False) else "Gratis"
 
 
 def save_users(users):
@@ -345,6 +401,7 @@ def load_users():
     for demo_user in DEMO_PROFILES:
         if demo_user["username"] not in existing_names:
             users.append(normalize_user(demo_user))
+    users = grant_early_access(users)
     save_users(users)
     return users
 
@@ -647,11 +704,18 @@ def register_user(username, password, gender, age, bio, seeking, email, phone):
     if not username or not password or not email or not phone:
         return False, "Fyll ut brukernavn, passord, e-post og telefonnummer."
 
+    if not is_current_email_verified(email):
+        return False, "Du må verifisere e-postadressen før registrering."
+
     if any(user["username"].lower() == username.lower() for user in st.session_state.users):
         return False, "Brukernavnet er allerede i bruk."
 
     if any(user["email"].lower() == email for user in st.session_state.users):
         return False, "E-postadressen er allerede registrert."
+
+    paid_via_email = is_email_paid(email)
+    session_has_paid_access = bool(st.session_state.is_paid and (st.session_state.verification_email or "").strip().lower() == email)
+    grant_free_access = early_access_spots_left(st.session_state.users) > 0 and not (paid_via_email or session_has_paid_access)
 
     new_user = normalize_user({
         "username": username,
@@ -663,7 +727,8 @@ def register_user(username, password, gender, age, bio, seeking, email, phone):
         "bio": bio or "Ny på RegnbueMatch 🌈",
         "seeking": seeking,
         "matches": [],
-        "is_paid": st.session_state.is_paid or is_email_paid(email),
+        "free_access_granted": grant_free_access,
+        "is_paid": paid_via_email or session_has_paid_access or grant_free_access,
     })
     st.session_state.users.append(new_user)
     save_users(st.session_state.users)
@@ -784,17 +849,17 @@ def render_sidebar():
     st.sidebar.title("Meny")
     if st.session_state.logged_in and st.session_state.user:
         st.sidebar.success(f"Innlogget som {st.session_state.user['username']}")
-        medlemskap = "Aktivt" if st.session_state.user.get("is_paid", False) else "Gratis"
+        medlemskap = get_membership_label(st.session_state.user)
         st.sidebar.caption(f"Medlemskap: {medlemskap}")
         if st.sidebar.button("🏠 Forside", key="sidebar_home_logged"):
             st.session_state.mode = "main"
             st.rerun()
         if not st.session_state.user.get("is_paid", False):
-            if st.sidebar.button("💎 Aktiver demo-medlemskap", key="sidebar_demo_upgrade"):
-                st.session_state.user["is_paid"] = True
-                update_user_record(st.session_state.user)
-                st.success("Demo-medlemskap aktivert!")
-                st.rerun()
+            spots_left = early_access_spots_left()
+            if spots_left > 0:
+                st.sidebar.info(f"🎁 {spots_left} gratisplasser igjen for verifiserte profiler.")
+            else:
+                st.sidebar.info("💎 Full tilgang aktiveres via abonnement.")
         if st.sidebar.button("🚪 Logg ut", key="sidebar_logout"):
             st.session_state.logged_in = False
             st.session_state.user = None
@@ -857,10 +922,16 @@ def render_header():
 
 
 def render_home():
+    spots_left = early_access_spots_left()
     stats = st.columns(3)
     stats[0].metric("Profiler", len(st.session_state.users))
     stats[1].metric("Online nå", len(ONLINE_SHOWCASE))
-    stats[2].metric("Stemning", "Trygg ✨")
+    stats[2].metric("Early access", f"{spots_left} igjen")
+
+    if spots_left > 0:
+        st.success(f"🎉 Fase 2-tilbud: De første {EARLY_ACCESS_LIMIT} verifiserte profilene får gratis full tilgang. {spots_left} plasser igjen.")
+    else:
+        st.info("Early access er fulltegnet. Nye brukere kan fortsatt registrere seg og oppgradere til abonnement.")
 
     intro_col, preview_col = st.columns([1.15, 0.85], gap="large")
     with intro_col:
@@ -889,8 +960,9 @@ def render_home():
             unsafe_allow_html=True,
         )
     with preview_col:
-        if os.path.exists("static/icons/splashscreen.png"):
-            st.image("static/icons/splashscreen.png", use_container_width=True)
+        splashscreen_path = os.path.join(STATIC_DIR, "icons", "splashscreen.png")
+        if os.path.exists(splashscreen_path):
+            st.image(splashscreen_path, use_container_width=True)
 
     st.markdown(
         """
@@ -972,16 +1044,22 @@ def render_register():
     reg_age = st.number_input("Alder", min_value=18, max_value=99, value=25, key="reg_age")
     reg_bio = st.text_area("Om deg selv", key="reg_bio", placeholder="Fortell litt om deg selv, interesser og hva du ser etter.")
 
-    if reg_email and is_email_paid(reg_email):
-        st.session_state.is_paid = True
-        st.success("Denne e-posten har allerede en bekreftet betaling.")
+    spots_left = early_access_spots_left()
+    current_email_has_paid_access = bool(reg_email and is_email_paid(reg_email))
+    st.session_state.is_paid = current_email_has_paid_access
 
     with st.container(border=True):
-        st.markdown("#### 💎 Abonnement")
-        if st.session_state.is_paid:
-            st.success("Du har aktivt abonnement og tilgang til chat-funksjoner.")
+        st.markdown("#### 🎁 Tilgang")
+        if current_email_has_paid_access:
+            st.success("Denne e-posten har allerede aktivt abonnement og full tilgang.")
+        elif spots_left > 0:
+            st.success(
+                f"De første {EARLY_ACCESS_LIMIT} verifiserte profilene får gratis full tilgang. "
+                f"Det er {spots_left} plasser igjen akkurat nå."
+            )
+            st.caption("Opprett profilen og bekreft e-posten din for å låse opp early access automatisk.")
         else:
-            st.warning("Du kan registrere deg gratis, men abonnement trengs for full chat-tilgang.")
+            st.warning("Gratisplassene er brukt opp. Du kan fortsatt registrere deg gratis, men abonnement trengs for full chat-tilgang.")
             if not stripe_config_ok:
                 st.info("Sett `STRIPE_SECRET_KEY` og `STRIPE_PRICE_ID` på Render for å aktivere kjøp.")
             if not app_base_url:
@@ -1071,6 +1149,9 @@ def render_register():
         )
         if success:
             delivery_updates = []
+            if payload.get("free_access_granted", False):
+                delivery_updates.append(("success", f"🎉 Du fikk gratis full tilgang som en av de første {EARLY_ACCESS_LIMIT} verifiserte brukerne."))
+
             welcome_result = send_welcome_email(payload)
             if welcome_result["ok"]:
                 delivery_updates.append(("success", welcome_result["message"]))
@@ -1154,7 +1235,7 @@ def render_chat_tab():
 
 
 def render_group_chat_tab():
-    st.header("Felles Chat (kun for betalende)")
+    st.header("Felles Chat (kun for medlemmer)")
     for item in get_group_chat():
         role = "user" if item["sender"] == st.session_state.user['username'] else "assistant"
         with st.chat_message(role):
@@ -1179,7 +1260,7 @@ def render_dashboard():
 
     stats = st.columns(3)
     stats[0].metric("Matcher", len(user.get("matches", [])))
-    stats[1].metric("Medlemskap", "Aktivt" if user.get("is_paid", False) else "Gratis")
+    stats[1].metric("Medlemskap", get_membership_label(user))
     stats[2].metric("Status", "Online")
 
     tab_labels = ["Matcher", "Online nå", "Chat", "AI-assistent"]

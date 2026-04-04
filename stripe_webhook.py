@@ -9,8 +9,9 @@ stripe.api_key = STRIPE_SECRET_KEY
 
 app = Flask(__name__)
 
-USERS_FILE = "users.json"
-PAID_EMAILS_FILE = "paid_emails.json"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+USERS_FILE = os.path.join(BASE_DIR, "users.json")
+PAID_EMAILS_FILE = os.path.join(BASE_DIR, "paid_emails.json")
 
 def load_json_file(path, default):
     if os.path.exists(path):
