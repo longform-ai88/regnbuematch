@@ -22,6 +22,7 @@ st.set_page_config(page_title="RegnbueMatch", page_icon="🌈", layout="centered
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
+UPLOADS_DIR = os.path.join(STATIC_DIR, "uploads")
 USERS_FILE = os.path.join(BASE_DIR, "users.json")
 PAID_EMAILS_FILE = os.path.join(BASE_DIR, "paid_emails.json")
 PRIVATE_CHATS_FILE = os.path.join(BASE_DIR, "private_chats.json")
@@ -769,6 +770,34 @@ def make_uploaded_image_data_url(uploaded_file):
     mime_type = getattr(uploaded_file, "type", "") or "image/png"
     encoded = base64.b64encode(payload).decode("utf-8")
     return f"data:{mime_type};base64,{encoded}"
+
+
+def save_uploaded_image_file(uploaded_file, username):
+    if uploaded_file is None:
+        return ""
+    try:
+        payload = uploaded_file.getvalue()
+    except Exception:
+        return ""
+    if not payload:
+        return ""
+
+    os.makedirs(UPLOADS_DIR, exist_ok=True)
+    raw_name = getattr(uploaded_file, "name", "profile.png") or "profile.png"
+    extension = os.path.splitext(raw_name)[1].lower()
+    if extension not in {".jpg", ".jpeg", ".png", ".webp"}:
+        extension = ".png"
+
+    safe_username = "".join(ch for ch in (username or "user") if ch.isalnum()).lower() or "user"
+    file_name = f"{safe_username}_{secrets.token_hex(8)}{extension}"
+    file_path = os.path.join(UPLOADS_DIR, file_name)
+
+    try:
+        with open(file_path, "wb") as image_file:
+            image_file.write(payload)
+        return file_path
+    except OSError:
+        return make_uploaded_image_data_url(uploaded_file)
 
 
 def render_other_user_profile_preview(user, key_prefix):
@@ -1636,9 +1665,45 @@ def render_home():
     else:
         st.info("Early access er fulltegnet. Nye brukere kan fortsatt registrere seg og oppgradere til abonnement.")
 
-    splashscreen_path = os.path.join(STATIC_DIR, "icons", "splashscreen.png")
-    if os.path.exists(splashscreen_path):
-        st.image(splashscreen_path, use_container_width=True)
+    st.markdown("### Hurtigvalg")
+    quick_home_cols = st.columns(5)
+
+    with quick_home_cols[0]:
+        if st.button("1- Inbox", key="home_quick_inbox", use_container_width=True):
+            if st.session_state.logged_in:
+                set_dashboard_section("Inbox")
+            else:
+                st.session_state.mode = "login"
+            st.rerun()
+
+    with quick_home_cols[1]:
+        if st.button("2- Opprett konto", key="home_quick_register", use_container_width=True):
+            st.session_state.mode = "register"
+            st.rerun()
+
+    with quick_home_cols[2]:
+        if st.button("3- Match", key="home_quick_match", use_container_width=True):
+            if st.session_state.logged_in:
+                set_dashboard_section("Finn noen")
+            else:
+                st.session_state.mode = "login"
+            st.rerun()
+
+    with quick_home_cols[3]:
+        if st.button("4- Profile", key="home_quick_profile", use_container_width=True):
+            if st.session_state.logged_in:
+                set_dashboard_section("Min profil")
+            else:
+                st.session_state.mode = "register"
+            st.rerun()
+
+    with quick_home_cols[4]:
+        if st.button("5- AI-assistent", key="home_quick_ai", use_container_width=True):
+            if st.session_state.logged_in:
+                set_dashboard_section("AI-assistent")
+            else:
+                st.session_state.mode = "login"
+            st.rerun()
 
     st.markdown(
         """
@@ -2104,11 +2169,11 @@ def render_profile_tab():
                 updated_user["photo_url"] = ""
                 updated_user["photo_gallery"] = []
             else:
-                gallery_images = [image for image in user.get("photo_gallery", []) if image and image.startswith("data:")]
+                gallery_images = [image for image in user.get("photo_gallery", []) if image]
                 for uploaded_photo in uploaded_photos or []:
-                    new_photo_data = make_uploaded_image_data_url(uploaded_photo)
-                    if new_photo_data and new_photo_data not in gallery_images:
-                        gallery_images.append(new_photo_data)
+                    saved_image_path = save_uploaded_image_file(uploaded_photo, user.get("username", "user"))
+                    if saved_image_path and saved_image_path not in gallery_images:
+                        gallery_images.append(saved_image_path)
 
                 cleaned_photo_urls = []
                 for line in (photo_urls_text or "").splitlines():
@@ -2411,7 +2476,7 @@ def render_dashboard():
         "3. Se **Inbox** når du får likes, matcher eller meldinger, og svar direkte der."
     )
 
-    section_options = ["Min profil", "Finn noen", "Inbox"]
+    section_options = ["Min profil", "Finn noen", "Inbox", "AI-assistent"]
     if user.get("is_paid", False):
         section_options.append("Felles chat")
 
@@ -2444,6 +2509,8 @@ def render_dashboard():
         render_inbox_tab()
     elif selected_section == "Min profil":
         render_profile_tab()
+    elif selected_section == "AI-assistent":
+        render_ai_tab()
     elif selected_section == "Felles chat":
         render_group_chat_tab()
 
