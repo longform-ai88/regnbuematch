@@ -382,6 +382,8 @@ def init_session_state():
         "email_verified": False,
         "pending_verification": None,
         "verification_attempts": 0,
+        "email_delivery_message": None,
+        "email_delivery_fallback": False,
         "registration_success": False,
         "private_chats": {},
         "group_chat": [
@@ -409,6 +411,8 @@ def reset_verification_state():
     st.session_state.email_verified = False
     st.session_state.pending_verification = None
     st.session_state.verification_attempts = 0
+    st.session_state.email_delivery_message = None
+    st.session_state.email_delivery_fallback = False
 
 
 def create_verification_code():
@@ -416,13 +420,26 @@ def create_verification_code():
 
 
 def send_verification_email(to_email, code):
-    smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+    smtp_server = os.getenv("SMTP_SERVER", "").strip()
     smtp_port = int(os.getenv("SMTP_PORT", "587"))
-    smtp_user = os.getenv("SMTP_USER", "tobias.mikkelsen02@gmail.com")
-    smtp_pass = os.getenv("SMTP_PASS", "qfrt nlmk dqeq rkwn")
+    smtp_user = os.getenv("SMTP_USER", "").strip()
+    smtp_pass = os.getenv("SMTP_PASS", "").strip()
+    allow_code_fallback = os.getenv("EMAIL_CODE_FALLBACK", "true").lower() == "true"
 
     if not to_email:
-        return "Skriv inn en gyldig e-postadresse først."
+        return {"ok": False, "message": "Skriv inn en gyldig e-postadresse først."}
+
+    if not (smtp_server and smtp_user and smtp_pass):
+        if allow_code_fallback:
+            return {
+                "ok": True,
+                "message": "E-post er ikke satt opp på serveren ennå. Koden vises midlertidig direkte i appen.",
+                "fallback_code": code,
+            }
+        return {
+            "ok": False,
+            "message": "SMTP mangler på serveren. Sett `SMTP_SERVER`, `SMTP_PORT`, `SMTP_USER` og `SMTP_PASS` i Render.",
+        }
 
     msg = MIMEMultipart()
     msg["From"] = smtp_user
@@ -431,14 +448,29 @@ def send_verification_email(to_email, code):
     msg.attach(MIMEText(f"Din kode er: {code}", "plain"))
 
     try:
-        server = smtplib.SMTP(smtp_server, smtp_port)
-        server.starttls()
-        server.login(smtp_user, smtp_pass)
-        server.send_message(msg)
-        server.quit()
-        return True
+        if smtp_port == 465:
+            with smtplib.SMTP_SSL(smtp_server, smtp_port, timeout=15) as server:
+                server.login(smtp_user, smtp_pass)
+                server.send_message(msg)
+        else:
+            with smtplib.SMTP(smtp_server, smtp_port, timeout=15) as server:
+                server.ehlo()
+                if smtp_port in (587, 2525):
+                    server.starttls()
+                    server.ehlo()
+                server.login(smtp_user, smtp_pass)
+                server.send_message(msg)
+        return {"ok": True, "message": f"Kode sendt til {to_email} 📧"}
+    except OSError as error:
+        if allow_code_fallback:
+            return {
+                "ok": True,
+                "message": f"E-postserveren kunne ikke nås akkurat nå ({error}). Koden vises midlertidig i appen så brukeren kan fortsette.",
+                "fallback_code": code,
+            }
+        return {"ok": False, "message": f"Nettverksfeil ved e-postsending: {error}"}
     except Exception as error:
-        return str(error)
+        return {"ok": False, "message": f"SMTP-feil: {error}"}
 
 
 def register_user(username, password, gender, age, bio, seeking, email, phone):
@@ -813,10 +845,24 @@ def render_register():
         st.session_state.email_verified = False
         st.session_state.verification_attempts = 0
         result = send_verification_email(reg_email, code)
-        if result is True:
-            st.success(f"Kode sendt til {reg_email} 📧")
+        st.session_state.email_delivery_message = result["message"]
+        st.session_state.email_delivery_fallback = bool(result.get("fallback_code"))
+        if result["ok"]:
+            if result.get("fallback_code"):
+                st.warning(result["message"])
+                st.code(result["fallback_code"])
+            else:
+                st.success(result["message"])
         else:
-            st.error(f"Kunne ikke sende e-post: {result}")
+            st.error(result["message"])
+
+    if st.session_state.email_delivery_message and not st.session_state.email_verified:
+        if st.session_state.email_delivery_fallback and st.session_state.verification_code:
+            st.warning(st.session_state.email_delivery_message)
+            st.code(st.session_state.verification_code)
+            st.caption("Midlertidig fallback er aktiv. Sett `SMTP_SERVER`, `SMTP_PORT`, `SMTP_USER` og `SMTP_PASS` i Render for vanlig e-postsending.")
+        elif st.session_state.verification_email == reg_email:
+            st.success(st.session_state.email_delivery_message)
 
     if st.session_state.pending_verification and not st.session_state.email_verified:
         code_input = st.text_input("Skriv inn koden du har mottatt", key="verify_code")
@@ -825,6 +871,7 @@ def render_register():
                 st.session_state.email_verified = True
                 st.session_state.verification_code = None
                 st.session_state.pending_verification = None
+                st.session_state.email_delivery_fallback = False
                 st.success("E-post verifisert ✅")
             else:
                 st.session_state.verification_attempts += 1
