@@ -4,6 +4,8 @@ import os
 import random
 import smtplib
 import string
+import urllib.error
+import urllib.request
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
@@ -419,21 +421,74 @@ def create_verification_code():
     return "".join(random.choices(string.digits, k=6))
 
 
+def send_verification_email_via_resend(to_email, code, resend_api_key, from_email):
+    payload = {
+        "from": f"RegnbueMatch <{from_email}>",
+        "to": [to_email],
+        "subject": "Verifiseringskode for RegnbueMatch",
+        "text": f"Din kode er: {code}",
+        "html": (
+            "<div style='font-family:Arial,sans-serif;padding:20px;'>"
+            "<h2>RegnbueMatch</h2>"
+            "<p>Din verifiseringskode er:</p>"
+            f"<div style='font-size:32px;font-weight:700;letter-spacing:4px;margin:12px 0;'>{code}</div>"
+            "<p>Koden kan brukes for å fullføre registreringen din.</p>"
+            "</div>"
+        ),
+    }
+    request = urllib.request.Request(
+        "https://api.resend.com/emails",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {resend_api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            status_code = getattr(response, "status", None)
+            if status_code is None:
+                status_code = response.getcode()
+            response_text = response.read().decode("utf-8", "ignore")
+            if 200 <= status_code < 300:
+                return True, f"Kode sendt til {to_email} 📧"
+            return False, f"Resend svarte med status {status_code}: {response_text[:200]}"
+    except urllib.error.HTTPError as error:
+        error_text = error.read().decode("utf-8", "ignore")
+        return False, f"Resend-feil {error.code}: {error_text[:200]}"
+    except Exception as error:
+        return False, f"Resend-feil: {error}"
+
+
 def send_verification_email(to_email, code):
     smtp_server = os.getenv("SMTP_SERVER", "").strip()
     smtp_port = int(os.getenv("SMTP_PORT", "587"))
     smtp_user = os.getenv("SMTP_USER", "").strip()
     smtp_pass = os.getenv("SMTP_PASS", "").strip()
+    resend_api_key = os.getenv("RESEND_API_KEY", "").strip()
+    resend_from_email = os.getenv("RESEND_FROM_EMAIL", smtp_user or "contact@longform-ai88.com").strip()
 
     if not to_email:
         return {"ok": False, "message": "Skriv inn en gyldig e-postadresse først."}
 
     fallback_message = "Koden vises midlertidig direkte i appen så brukeren kan fortsette."
+    provider_error = None
+
+    if resend_api_key and resend_from_email:
+        resend_ok, resend_message = send_verification_email_via_resend(
+            to_email, code, resend_api_key, resend_from_email
+        )
+        if resend_ok:
+            return {"ok": True, "message": resend_message}
+        provider_error = resend_message
 
     if not (smtp_server and smtp_user and smtp_pass):
+        reason = provider_error or "E-post er ikke satt opp på serveren ennå."
         return {
             "ok": True,
-            "message": f"E-post er ikke satt opp på serveren ennå. {fallback_message}",
+            "message": f"{reason} {fallback_message}",
             "fallback_code": code,
         }
 
@@ -458,9 +513,10 @@ def send_verification_email(to_email, code):
                 server.send_message(msg)
         return {"ok": True, "message": f"Kode sendt til {to_email} 📧"}
     except Exception as error:
+        reason = provider_error or error
         return {
             "ok": True,
-            "message": f"E-postsending feilet midlertidig ({error}). {fallback_message}",
+            "message": f"E-postsending feilet midlertidig ({reason}). {fallback_message}",
             "fallback_code": code,
         }
 
@@ -852,7 +908,7 @@ def render_register():
         if st.session_state.email_delivery_fallback and st.session_state.verification_code:
             st.warning(st.session_state.email_delivery_message)
             st.code(st.session_state.verification_code)
-            st.caption("Midlertidig fallback er aktiv. Sett `SMTP_SERVER`, `SMTP_PORT`, `SMTP_USER` og `SMTP_PASS` i Render for vanlig e-postsending.")
+            st.caption("Midlertidig fallback er aktiv. Sett helst `RESEND_API_KEY` og eventuelt `RESEND_FROM_EMAIL` i Render, eller bruk `SMTP_SERVER`, `SMTP_PORT`, `SMTP_USER` og `SMTP_PASS`.")
         elif st.session_state.verification_email == reg_email:
             st.success(st.session_state.email_delivery_message)
 
