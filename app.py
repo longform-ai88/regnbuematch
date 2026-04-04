@@ -17,6 +17,9 @@ st.set_page_config(page_title="RegnbueMatch", page_icon="🌈", layout="centered
 
 USERS_FILE = "users.json"
 PAID_EMAILS_FILE = "paid_emails.json"
+DEFAULT_FROM_EMAIL = "noreply@longform-ai88.com"
+DEFAULT_FROM_NAME = os.getenv("RESEND_FROM_NAME", "RegnbueMatch").strip() or "RegnbueMatch"
+ADMIN_NOTIFICATION_EMAIL = os.getenv("ADMIN_NOTIFICATION_EMAIL", "").strip()
 
 DEMO_PROFILES = [
     {
@@ -387,6 +390,7 @@ def init_session_state():
         "email_delivery_message": None,
         "email_delivery_fallback": False,
         "registration_success": False,
+        "post_registration_messages": [],
         "private_chats": {},
         "group_chat": [
             {"sender": "System", "message": "Velkommen til felleschatten i RegnbueMatch 🌈"}
@@ -421,18 +425,30 @@ def create_verification_code():
     return "".join(random.choices(string.digits, k=6))
 
 
-def send_verification_email_via_resend(to_email, code, resend_api_key, from_email):
+def send_email_via_resend(
+    to_email,
+    subject,
+    text_body,
+    html_body=None,
+    from_email=None,
+    from_name=None,
+):
+    resend_api_key = os.getenv("RESEND_API_KEY", "").strip()
+    sender_email = (from_email or DEFAULT_FROM_EMAIL).strip()
+    sender_name = (from_name or DEFAULT_FROM_NAME).strip() or "RegnbueMatch"
+
+    if not resend_api_key or not sender_email:
+        return False, "Resend mangler `RESEND_API_KEY` eller avsenderadresse."
+
     payload = {
-        "from": f"RegnbueMatch <{from_email}>",
+        "from": f"{sender_name} <{sender_email}>",
         "to": [to_email],
-        "subject": "Verifiseringskode for RegnbueMatch",
-        "text": f"Din kode er: {code}",
-        "html": (
+        "subject": subject,
+        "text": text_body,
+        "html": html_body
+        or (
             "<div style='font-family:Arial,sans-serif;padding:20px;'>"
-            "<h2>RegnbueMatch</h2>"
-            "<p>Din verifiseringskode er:</p>"
-            f"<div style='font-size:32px;font-weight:700;letter-spacing:4px;margin:12px 0;'>{code}</div>"
-            "<p>Koden kan brukes for å fullføre registreringen din.</p>"
+            f"<p>{text_body}</p>"
             "</div>"
         ),
     }
@@ -442,83 +458,185 @@ def send_verification_email_via_resend(to_email, code, resend_api_key, from_emai
         headers={
             "Authorization": f"Bearer {resend_api_key}",
             "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "RegnbueMatch/1.0 (+https://regnbuematch.no)",
         },
         method="POST",
     )
 
     try:
         with urllib.request.urlopen(request, timeout=20) as response:
-            status_code = getattr(response, "status", None)
-            if status_code is None:
-                status_code = response.getcode()
+            status_code = getattr(response, "status", None) or response.getcode()
             response_text = response.read().decode("utf-8", "ignore")
             if 200 <= status_code < 300:
-                return True, f"Kode sendt til {to_email} 📧"
+                return True, response_text
             return False, f"Resend svarte med status {status_code}: {response_text[:200]}"
     except urllib.error.HTTPError as error:
         error_text = error.read().decode("utf-8", "ignore")
+        if "1010" in error_text:
+            return (
+                False,
+                "Resend/Cloudflare blokkerte forespørselen (1010). "
+                "Sjekk at `RESEND_FROM_EMAIL` bruker ditt verifiserte domene, "
+                "lag en ny `RESEND_API_KEY` i Resend, oppdater den i Render og redeploy appen.",
+            )
         return False, f"Resend-feil {error.code}: {error_text[:200]}"
     except Exception as error:
         return False, f"Resend-feil: {error}"
 
 
-def send_verification_email(to_email, code):
+def send_email_message(
+    to_email,
+    subject,
+    text_body,
+    html_body=None,
+    success_message=None,
+    allow_fallback=False,
+    fallback_message=None,
+    fallback_code=None,
+):
     smtp_server = os.getenv("SMTP_SERVER", "").strip()
     smtp_port = int(os.getenv("SMTP_PORT", "587"))
     smtp_user = os.getenv("SMTP_USER", "").strip()
     smtp_pass = os.getenv("SMTP_PASS", "").strip()
-    resend_api_key = os.getenv("RESEND_API_KEY", "").strip()
-    resend_from_email = os.getenv("RESEND_FROM_EMAIL", smtp_user or "contact@longform-ai88.com").strip()
+    resend_from_email = DEFAULT_FROM_EMAIL
+    resend_from_name = os.getenv("RESEND_FROM_NAME", DEFAULT_FROM_NAME).strip() or "RegnbueMatch"
 
     if not to_email:
         return {"ok": False, "message": "Skriv inn en gyldig e-postadresse først."}
 
-    fallback_message = "Koden vises midlertidig direkte i appen så brukeren kan fortsette."
     provider_error = None
 
-    if resend_api_key and resend_from_email:
-        resend_ok, resend_message = send_verification_email_via_resend(
-            to_email, code, resend_api_key, resend_from_email
+    if os.getenv("RESEND_API_KEY", "").strip() and resend_from_email:
+        resend_ok, resend_message = send_email_via_resend(
+            to_email=to_email,
+            subject=subject,
+            text_body=text_body,
+            html_body=html_body,
+            from_email=resend_from_email,
+            from_name=resend_from_name,
         )
         if resend_ok:
-            return {"ok": True, "message": resend_message}
+            return {"ok": True, "message": success_message or f"E-post sendt til {to_email} 📧"}
         provider_error = resend_message
 
-    if not (smtp_server and smtp_user and smtp_pass):
+    if smtp_server and smtp_user and smtp_pass:
+        msg = MIMEMultipart("alternative")
+        msg["From"] = f"{resend_from_name} <{smtp_user}>"
+        msg["To"] = to_email
+        msg["Subject"] = subject
+        msg.attach(MIMEText(text_body, "plain", "utf-8"))
+        if html_body:
+            msg.attach(MIMEText(html_body, "html", "utf-8"))
+
+        try:
+            if smtp_port == 465:
+                with smtplib.SMTP_SSL(smtp_server, smtp_port, timeout=15) as server:
+                    server.login(smtp_user, smtp_pass)
+                    server.send_message(msg)
+            else:
+                with smtplib.SMTP(smtp_server, smtp_port, timeout=15) as server:
+                    server.ehlo()
+                    if smtp_port in (587, 2525):
+                        server.starttls()
+                        server.ehlo()
+                    server.login(smtp_user, smtp_pass)
+                    server.send_message(msg)
+            return {"ok": True, "message": success_message or f"E-post sendt til {to_email} 📧"}
+        except Exception as error:
+            provider_error = provider_error or str(error)
+
+    if allow_fallback:
         reason = provider_error or "E-post er ikke satt opp på serveren ennå."
         return {
             "ok": True,
-            "message": f"{reason} {fallback_message}",
-            "fallback_code": code,
+            "message": f"{reason} {fallback_message or 'Midlertidig fallback er aktiv.'}",
+            "fallback_code": fallback_code,
         }
 
-    msg = MIMEMultipart()
-    msg["From"] = smtp_user
-    msg["To"] = to_email
-    msg["Subject"] = "Verifiseringskode for RegnbueMatch"
-    msg.attach(MIMEText(f"Din kode er: {code}", "plain"))
+    return {"ok": False, "message": provider_error or "E-postsending er ikke konfigurert ennå."}
 
-    try:
-        if smtp_port == 465:
-            with smtplib.SMTP_SSL(smtp_server, smtp_port, timeout=15) as server:
-                server.login(smtp_user, smtp_pass)
-                server.send_message(msg)
-        else:
-            with smtplib.SMTP(smtp_server, smtp_port, timeout=15) as server:
-                server.ehlo()
-                if smtp_port in (587, 2525):
-                    server.starttls()
-                    server.ehlo()
-                server.login(smtp_user, smtp_pass)
-                server.send_message(msg)
-        return {"ok": True, "message": f"Kode sendt til {to_email} 📧"}
-    except Exception as error:
-        reason = provider_error or error
-        return {
-            "ok": True,
-            "message": f"E-postsending feilet midlertidig ({reason}). {fallback_message}",
-            "fallback_code": code,
-        }
+
+def send_verification_email(to_email, code):
+    return send_email_message(
+        to_email=to_email,
+        subject="Din kode",
+        text_body=(
+            "Hei!\n\n"
+            f"Din kode er: {code}\n\n"
+            "Skriv inn koden i appen for å fullføre registreringen."
+        ),
+        html_body=(
+            "<div style='font-family:Arial,sans-serif;padding:20px;'>"
+            "<h2>RegnbueMatch</h2>"
+            "<p>Din kode er:</p>"
+            f"<div style='font-size:32px;font-weight:700;letter-spacing:4px;margin:12px 0;'>{code}</div>"
+            "<p>Skriv inn koden i appen for å fullføre registreringen.</p>"
+            "</div>"
+        ),
+        success_message=f"Kode sendt til {to_email} 📧",
+        allow_fallback=True,
+        fallback_message="Koden vises midlertidig direkte i appen så brukeren kan fortsette.",
+        fallback_code=code,
+    )
+
+
+def send_welcome_email(user):
+    username = user.get("username", "venn")
+    to_email = (user.get("email") or "").strip().lower()
+    return send_email_message(
+        to_email=to_email,
+        subject="Velkommen til RegnbueMatch 🌈",
+        text_body=(
+            f"Hei {username}!\n\n"
+            "Profilen din er nå aktiv på RegnbueMatch.\n"
+            "Du kan logge inn, se matcher og begynne å chatte med en gang.\n\n"
+            "Takk for at du er med 💜"
+        ),
+        html_body=(
+            "<div style='font-family:Arial,sans-serif;padding:20px;'>"
+            f"<h2>Hei {username}! 🌈</h2>"
+            "<p>Profilen din er nå aktiv på <strong>RegnbueMatch</strong>.</p>"
+            "<p>Du kan logge inn, se matcher og begynne å chatte med en gang.</p>"
+            "<p>Takk for at du er med 💜</p>"
+            "</div>"
+        ),
+        success_message=f"Velkomstmail sendt til {to_email} 📬",
+    )
+
+
+def notify_admin_new_registration(user):
+    if not ADMIN_NOTIFICATION_EMAIL:
+        return None
+
+    username = user.get("username", "Ukjent")
+    email = user.get("email", "")
+    phone = user.get("phone", "")
+    return send_email_message(
+        to_email=ADMIN_NOTIFICATION_EMAIL,
+        subject=f"Ny registrering i RegnbueMatch: {username}",
+        text_body=(
+            "En ny bruker har registrert seg.\n\n"
+            f"Brukernavn: {username}\n"
+            f"E-post: {email}\n"
+            f"Telefon: {phone}\n"
+        ),
+        html_body=(
+            "<div style='font-family:Arial,sans-serif;padding:20px;'>"
+            "<h3>Ny registrering i RegnbueMatch</h3>"
+            f"<p><strong>Brukernavn:</strong> {username}</p>"
+            f"<p><strong>E-post:</strong> {email}</p>"
+            f"<p><strong>Telefon:</strong> {phone}</p>"
+            "</div>"
+        ),
+        success_message="Adminvarsel sendt.",
+    )
+
+
+def is_current_email_verified(current_email):
+    current_email = (current_email or "").strip().lower()
+    verified_email = (st.session_state.verification_email or "").strip().lower()
+    return bool(current_email and st.session_state.email_verified and current_email == verified_email)
 
 
 def register_user(username, password, gender, age, bio, seeking, email, phone):
@@ -904,12 +1022,15 @@ def render_register():
         else:
             st.error(result["message"])
 
+    current_verification_email = (st.session_state.verification_email or "").strip().lower()
+    current_reg_email = (reg_email or "").strip().lower()
+
     if st.session_state.email_delivery_message and not st.session_state.email_verified:
         if st.session_state.email_delivery_fallback and st.session_state.verification_code:
             st.warning(st.session_state.email_delivery_message)
             st.code(st.session_state.verification_code)
-            st.caption("Midlertidig fallback er aktiv. Sett helst `RESEND_API_KEY` og eventuelt `RESEND_FROM_EMAIL` i Render, eller bruk `SMTP_SERVER`, `SMTP_PORT`, `SMTP_USER` og `SMTP_PASS`.")
-        elif st.session_state.verification_email == reg_email:
+            st.caption("Midlertidig fallback er aktiv. Sett helst `RESEND_API_KEY` og `RESEND_FROM_EMAIL` i Render. Valgfritt: `ADMIN_NOTIFICATION_EMAIL` for varsler til deg.")
+        elif current_verification_email == current_reg_email:
             st.success(st.session_state.email_delivery_message)
 
     if st.session_state.pending_verification and not st.session_state.email_verified:
@@ -929,10 +1050,15 @@ def render_register():
                 else:
                     st.error("Feil kode. Prøv igjen.")
 
-    if not st.session_state.email_verified:
+    email_is_verified = is_current_email_verified(reg_email)
+    if st.session_state.email_verified and current_reg_email != current_verification_email:
+        st.warning("Du endret e-post etter verifisering. Send en ny kode for den nye adressen før registrering.")
+    elif email_is_verified:
+        st.success("Denne e-postadressen er bekreftet og klar til registrering.")
+    else:
         st.info("Du må verifisere e-postadressen før du kan registrere profilen.")
 
-    if st.button("✅ Registrer profil", key="register_main_btn", disabled=not st.session_state.email_verified):
+    if st.button("✅ Registrer profil", key="register_main_btn", disabled=not email_is_verified):
         success, payload = register_user(
             reg_username,
             reg_password,
@@ -944,6 +1070,18 @@ def render_register():
             phone=reg_phone,
         )
         if success:
+            delivery_updates = []
+            welcome_result = send_welcome_email(payload)
+            if welcome_result["ok"]:
+                delivery_updates.append(("success", welcome_result["message"]))
+            elif welcome_result["message"]:
+                delivery_updates.append(("info", f"Profilen er opprettet, men velkomstmail ble ikke sendt: {welcome_result['message']}"))
+
+            admin_result = notify_admin_new_registration(payload)
+            if admin_result and not admin_result["ok"]:
+                delivery_updates.append(("warning", f"Adminvarsel ble ikke sendt: {admin_result['message']}"))
+
+            st.session_state.post_registration_messages = delivery_updates
             reset_verification_state()
             st.session_state.registration_success = True
             st.session_state.mode = "login"
@@ -1072,6 +1210,9 @@ def main():
 
     if st.session_state.registration_success:
         st.success("Bruker registrert! Du kan nå logge inn med den nye profilen.")
+        for level, message in st.session_state.post_registration_messages:
+            getattr(st, level, st.info)(message)
+        st.session_state.post_registration_messages = []
         st.session_state.registration_success = False
 
     if st.session_state.logged_in and st.session_state.user:
