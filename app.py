@@ -8,6 +8,7 @@ import string
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
@@ -23,6 +24,7 @@ USERS_FILE = os.path.join(BASE_DIR, "users.json")
 PAID_EMAILS_FILE = os.path.join(BASE_DIR, "paid_emails.json")
 PRIVATE_CHATS_FILE = os.path.join(BASE_DIR, "private_chats.json")
 GROUP_CHAT_FILE = os.path.join(BASE_DIR, "group_chat.json")
+NOTIFICATIONS_FILE = os.path.join(BASE_DIR, "notifications.json")
 DEFAULT_FROM_EMAIL = "noreply@longform-ai88.com"
 DEFAULT_FROM_NAME = os.getenv("RESEND_FROM_NAME", "RegnbueMatch").strip() or "RegnbueMatch"
 ADMIN_NOTIFICATION_EMAIL = os.getenv("ADMIN_NOTIFICATION_EMAIL", "").strip()
@@ -312,6 +314,91 @@ def save_json_file(path, data):
         json.dump(data, file, ensure_ascii=False, indent=2)
 
 
+def load_notifications():
+    return load_json_file(NOTIFICATIONS_FILE, {})
+
+
+def save_notifications(notifications):
+    save_json_file(NOTIFICATIONS_FILE, notifications)
+
+
+def get_user_notifications(username):
+    username = (username or "").strip()
+    if not username:
+        return []
+    notifications = load_notifications()
+    user_notifications = notifications.get(username, [])
+    return sorted(user_notifications, key=lambda item: item.get("created_at", ""), reverse=True)
+
+
+def count_unread_notifications(username):
+    return sum(1 for item in get_user_notifications(username) if not item.get("read", False))
+
+
+def mark_notifications_read(username):
+    username = (username or "").strip()
+    if not username:
+        return
+    notifications = load_notifications()
+    user_notifications = notifications.get(username, [])
+    for item in user_notifications:
+        item["read"] = True
+    notifications[username] = user_notifications
+    save_notifications(notifications)
+    st.session_state.notifications = notifications
+
+
+def create_notification(username, title, message, kind="info"):
+    username = (username or "").strip()
+    if not username:
+        return
+    notifications = load_notifications()
+    user_notifications = notifications.get(username, [])
+    user_notifications.append(
+        {
+            "title": title,
+            "message": message,
+            "kind": kind,
+            "created_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+            "read": False,
+        }
+    )
+    notifications[username] = user_notifications[-50:]
+    save_notifications(notifications)
+    st.session_state.notifications = notifications
+
+
+def notify_user_event(target_username, title, message, kind="info", email_subject=None):
+    target_username = (target_username or "").strip()
+    if not target_username:
+        return
+
+    create_notification(target_username, title, message, kind=kind)
+    target_user = get_user_by_username(target_username)
+    if not target_user or not target_user.get("email"):
+        return
+
+    try:
+        send_email_message(
+            to_email=target_user["email"],
+            subject=email_subject or f"RegnbueMatch: {title}",
+            text_body=(
+                f"Hei {target_username}!\n\n"
+                f"{message}\n\n"
+                "Logg inn på RegnbueMatch for å se varselet."
+            ),
+            html_body=(
+                "<div style='font-family:Arial,sans-serif;padding:20px;'>"
+                f"<h3>{title}</h3>"
+                f"<p>{message}</p>"
+                "<p>Logg inn på RegnbueMatch for å se varselet.</p>"
+                "</div>"
+            ),
+        )
+    except Exception:
+        pass
+
+
 def load_private_chats():
     return load_json_file(PRIVATE_CHATS_FILE, {})
 
@@ -514,6 +601,7 @@ def init_session_state():
         "post_registration_messages": [],
         "private_chats": load_private_chats(),
         "group_chat": load_group_chat_messages(),
+        "notifications": load_notifications(),
         "active_chat_user": None,
     }
     for key, value in defaults.items():
@@ -526,6 +614,7 @@ def init_session_state():
     st.session_state.users = load_users()
     st.session_state.private_chats = load_private_chats()
     st.session_state.group_chat = load_group_chat_messages()
+    st.session_state.notifications = load_notifications()
     if st.session_state.user:
         refreshed_user = get_user_by_username(st.session_state.user.get("username"))
         if refreshed_user:
@@ -867,12 +956,17 @@ def find_matches(current_user):
 
 def add_match(current_username, other_username):
     current_user = get_user_by_username(current_username) or {}
-    if other_username in normalize_user(current_user).get("matches", []):
+    current_user = normalize_user(current_user)
+    if other_username in current_user.get("matches", []):
         return True, f"Du og {other_username} er allerede en match 💬"
 
     other_user = get_user_by_username(other_username) or {}
     other_user_likes = normalize_user(other_user).get("likes_sent", [])
     mutual_match = current_username in other_user_likes
+    already_liked = other_username in current_user.get("likes_sent", [])
+
+    if already_liked and not mutual_match:
+        return False, f"Du har allerede sendt like til {other_username} 💌"
 
     updated_users = []
     for raw_user in st.session_state.users:
@@ -898,7 +992,26 @@ def add_match(current_username, other_username):
 
     if mutual_match:
         open_chat_with(other_username)
+        notify_user_event(
+            current_username,
+            "Ny match 🎉",
+            f"Du og {other_username} likte hverandre. Åpne inboxen for å starte chat.",
+            kind="match",
+        )
+        notify_user_event(
+            other_username,
+            "Ny match 🎉",
+            f"Du og {current_username} likte hverandre. Åpne inboxen for å starte chat.",
+            kind="match",
+        )
         return True, f"Det er en match med {other_username}! Åpne inboxen og start chatten 💜"
+
+    notify_user_event(
+        other_username,
+        "Nytt like 💜",
+        f"{current_username} likte profilen din. Sjekk inboxen for å svare.",
+        kind="like",
+    )
     return False, f"Like sendt til {other_username} 💌"
 
 
@@ -922,6 +1035,12 @@ def send_message(user_a, user_b, message):
     chats[key] = history
     save_private_chats(chats)
     st.session_state.private_chats = chats
+    notify_user_event(
+        user_b,
+        "Ny melding 💬",
+        f"{user_a} sendte deg en ny melding: “{message.strip()[:80]}”",
+        kind="message",
+    )
 
 
 def get_group_chat():
@@ -989,7 +1108,9 @@ def render_sidebar():
     if st.session_state.logged_in and st.session_state.user:
         st.sidebar.success(f"Innlogget som {st.session_state.user['username']}")
         medlemskap = get_membership_label(st.session_state.user)
+        unread_notifications = count_unread_notifications(st.session_state.user["username"])
         st.sidebar.caption(f"Medlemskap: {medlemskap}")
+        st.sidebar.caption(f"🔔 Varsler: {unread_notifications} uleste")
         if st.sidebar.button("🏠 Forside", key="sidebar_home_logged"):
             st.session_state.mode = "main"
             st.rerun()
@@ -1453,9 +1574,29 @@ def render_inbox_tab():
     current_user = normalize_user(st.session_state.user)
     incoming_likes = get_incoming_likes(current_user)
     matched_users = get_matched_users(current_user)
+    notifications = get_user_notifications(current_user["username"])
+    unread_notifications = count_unread_notifications(current_user["username"])
 
     st.header("Inbox")
-    st.caption("Her ser du hvem som liker deg, matchene dine og alle private meldinger.")
+    st.caption("Her ser du varsler, hvem som liker deg, matchene dine og alle private meldinger.")
+
+    notice_col, action_col = st.columns([0.7, 0.3])
+    with notice_col:
+        st.markdown(f"**🔔 Varsler ({unread_notifications} uleste)**")
+    with action_col:
+        if unread_notifications and st.button("Marker som lest", key="mark_notifications_read_btn"):
+            mark_notifications_read(current_user["username"])
+            st.rerun()
+
+    if notifications:
+        for index, item in enumerate(notifications[:8]):
+            with st.container(border=True):
+                status = "🟣 Ulest" if not item.get("read", False) else "⚪ Lest"
+                st.markdown(f"**{item.get('title', 'Varsel')}** · {status}")
+                st.caption(item.get("message", ""))
+                st.caption(item.get("created_at", ""))
+    else:
+        st.info("Ingen varsler ennå. Likes, matcher og meldinger dukker opp her.")
 
     if incoming_likes:
         st.subheader("💜 Liker deg")
@@ -1541,9 +1682,10 @@ def render_dashboard():
         st.info("💡 Gå til `Min profil` for å legge til bilde og fullføre profilen din.")
 
     incoming_likes = get_incoming_likes(user)
+    unread_notifications = count_unread_notifications(user["username"])
     stats = st.columns(3)
     stats[0].metric("Matcher", len(user.get("matches", [])))
-    stats[1].metric("Inbox", len(incoming_likes))
+    stats[1].metric("Varsler", unread_notifications)
     stats[2].metric("Profil", "Komplett" if is_profile_complete(user) else "Ufullstendig")
 
     tab_labels = ["Utforsk", "Inbox", "Min profil"]
