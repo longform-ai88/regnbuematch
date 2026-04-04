@@ -1636,36 +1636,9 @@ def render_home():
     else:
         st.info("Early access er fulltegnet. Nye brukere kan fortsatt registrere seg og oppgradere til abonnement.")
 
-    intro_col, preview_col = st.columns([1.15, 0.85], gap="large")
-    with intro_col:
-        st.markdown(
-            """
-            <div class="soft-card">
-                <span class="card-badge">VELKOMMEN</span>
-                <h3>Et varmere og enklere fellesskap</h3>
-                <p>RegnbueMatch skal være et trygt sted for nye forbindelser, gode samtaler og et mer inkluderende miljø for alle som blir med.</p>
-                <div class="feature-grid">
-                    <div class="feature-item">
-                        <h4>💌 Trygg start</h4>
-                        <p>Verifisering gjør fellesskapet mer ekte og seriøst.</p>
-                    </div>
-                    <div class="feature-item">
-                        <h4>🌈 Fellesskap</h4>
-                        <p>Bygg nettverk, finn matcher og møt flere som passer deg.</p>
-                    </div>
-                    <div class="feature-item">
-                        <h4>📲 Enkelt å bruke</h4>
-                        <p>Alt viktig er samlet på ett sted og lett å forstå.</p>
-                    </div>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with preview_col:
-        splashscreen_path = os.path.join(STATIC_DIR, "icons", "splashscreen.png")
-        if os.path.exists(splashscreen_path):
-            st.image(splashscreen_path, use_container_width=True)
+    splashscreen_path = os.path.join(STATIC_DIR, "icons", "splashscreen.png")
+    if os.path.exists(splashscreen_path):
+        st.image(splashscreen_path, use_container_width=True)
 
     st.markdown(
         """
