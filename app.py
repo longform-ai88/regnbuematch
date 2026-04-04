@@ -2081,39 +2081,39 @@ def render_inbox_tab():
         st.info("Ingen matcher ennå. Gå til `Utforsk` og lik noen profiler for å starte en samtale.")
         return
 
-    partner_names = [match['username'] for match in matched_users]
-    if st.session_state.active_chat_user not in partner_names:
-        st.session_state.active_chat_user = partner_names[0]
-
     for match in matched_users:
         history = get_chat(current_user['username'], match['username'])
         last_message = history[-1]['message'] if history else "Ingen meldinger ennå — si hei 👋"
         with st.container(border=True):
-            image_col, summary_col, open_col = st.columns([0.2, 0.56, 0.24], gap="medium")
+            image_col, summary_col = st.columns([0.2, 0.8], gap="medium")
             with image_col:
                 st.image(get_profile_image(match), use_container_width=True)
             with summary_col:
                 st.markdown(f"## {match['username']}")
                 st.caption(match.get('bio') or 'Ny match i inboxen din.')
-                st.write(last_message)
+                st.write(f"**Siste melding:** {last_message}")
                 render_other_user_profile_preview(match, f"matched_profile_preview_{match['username']}")
-            with open_col:
-                if st.button(f"Åpne chat", key=f"open_chat_{match['username']}"):
-                    open_chat_with(match['username'])
-                    st.rerun()
 
-    active_partner = st.session_state.active_chat_user
-    if active_partner:
-        st.markdown(f"### Chat med {active_partner}")
-        for item in get_chat(current_user['username'], active_partner):
-            role = "user" if item["sender"] == current_user['username'] else "assistant"
-            with st.chat_message(role):
-                st.write(item["message"])
+            st.markdown(f"#### Chat med {match['username']}")
+            if history:
+                for item in history[-8:]:
+                    role = "user" if item["sender"] == current_user['username'] else "assistant"
+                    with st.chat_message(role):
+                        st.write(item["message"])
+            else:
+                st.info("Ingen meldinger ennå — si hei 👋")
 
-        message = st.text_input("Skriv melding", key=f"private_message_input_{active_partner}")
-        if st.button("Send melding", key=f"send_chat_btn_{active_partner}"):
-            send_message(current_user['username'], active_partner, message)
-            st.rerun()
+            reply_cols = st.columns([0.78, 0.22], gap="small")
+            reply_key = f"inline_reply_{match['username']}"
+            reply_message = reply_cols[0].text_input(
+                f"Skriv svar til {match['username']}",
+                key=reply_key,
+                placeholder="Skriv en melding...",
+                label_visibility="collapsed",
+            )
+            if reply_cols[1].button("Send", key=f"send_inline_{match['username']}"):
+                send_message(current_user['username'], match['username'], reply_message)
+                st.rerun()
 
 
 def render_group_chat_tab():
