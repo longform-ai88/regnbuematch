@@ -424,21 +424,17 @@ def send_verification_email(to_email, code):
     smtp_port = int(os.getenv("SMTP_PORT", "587"))
     smtp_user = os.getenv("SMTP_USER", "").strip()
     smtp_pass = os.getenv("SMTP_PASS", "").strip()
-    allow_code_fallback = os.getenv("EMAIL_CODE_FALLBACK", "true").lower() == "true"
 
     if not to_email:
         return {"ok": False, "message": "Skriv inn en gyldig e-postadresse først."}
 
+    fallback_message = "Koden vises midlertidig direkte i appen så brukeren kan fortsette."
+
     if not (smtp_server and smtp_user and smtp_pass):
-        if allow_code_fallback:
-            return {
-                "ok": True,
-                "message": "E-post er ikke satt opp på serveren ennå. Koden vises midlertidig direkte i appen.",
-                "fallback_code": code,
-            }
         return {
-            "ok": False,
-            "message": "SMTP mangler på serveren. Sett `SMTP_SERVER`, `SMTP_PORT`, `SMTP_USER` og `SMTP_PASS` i Render.",
+            "ok": True,
+            "message": f"E-post er ikke satt opp på serveren ennå. {fallback_message}",
+            "fallback_code": code,
         }
 
     msg = MIMEMultipart()
@@ -461,16 +457,12 @@ def send_verification_email(to_email, code):
                 server.login(smtp_user, smtp_pass)
                 server.send_message(msg)
         return {"ok": True, "message": f"Kode sendt til {to_email} 📧"}
-    except OSError as error:
-        if allow_code_fallback:
-            return {
-                "ok": True,
-                "message": f"E-postserveren kunne ikke nås akkurat nå ({error}). Koden vises midlertidig i appen så brukeren kan fortsette.",
-                "fallback_code": code,
-            }
-        return {"ok": False, "message": f"Nettverksfeil ved e-postsending: {error}"}
     except Exception as error:
-        return {"ok": False, "message": f"SMTP-feil: {error}"}
+        return {
+            "ok": True,
+            "message": f"E-postsending feilet midlertidig ({error}). {fallback_message}",
+            "fallback_code": code,
+        }
 
 
 def register_user(username, password, gender, age, bio, seeking, email, phone):
