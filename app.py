@@ -778,6 +778,7 @@ def init_session_state():
         "group_chat": load_group_chat_messages(),
         "notifications": load_notifications(),
         "dashboard_section": "Finn noen",
+        "pending_dashboard_section": None,
         "active_chat_user": None,
     }
     for key, value in defaults.items():
@@ -1107,7 +1108,7 @@ def get_matched_users(current_user):
 
 
 def set_dashboard_section(section_name):
-    st.session_state.dashboard_section = section_name
+    st.session_state.pending_dashboard_section = section_name
     st.session_state.mode = "dashboard"
 
 
@@ -1940,23 +1941,30 @@ def render_dashboard():
     if user.get("is_paid", False):
         section_options.append("Felles chat")
 
-    if st.session_state.get("dashboard_section") not in section_options:
+    current_section = st.session_state.get("dashboard_section")
+    pending_section = st.session_state.get("pending_dashboard_section")
+    if pending_section in section_options:
+        current_section = pending_section
+        st.session_state.pending_dashboard_section = None
+    elif current_section not in section_options:
         if unread_notifications or incoming_likes:
-            st.session_state.dashboard_section = "Inbox"
+            current_section = "Inbox"
         elif not is_profile_complete(user):
-            st.session_state.dashboard_section = "Min profil"
+            current_section = "Min profil"
         else:
-            st.session_state.dashboard_section = "Finn noen"
+            current_section = "Finn noen"
 
     quick_cols = st.columns(len(section_options))
     for index, section_name in enumerate(section_options):
         if quick_cols[index].button(section_name, key=f"quick_nav_{section_name}"):
+            current_section = section_name
             set_dashboard_section(section_name)
             st.rerun()
 
     selected_section = st.radio(
         "Velg side",
         section_options,
+        index=section_options.index(current_section),
         key="dashboard_section",
         horizontal=True,
         label_visibility="collapsed",
