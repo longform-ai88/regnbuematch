@@ -3,6 +3,7 @@ import base64
 import json
 import os
 import random
+import secrets
 import smtplib
 import string
 import urllib.error
@@ -25,6 +26,7 @@ PAID_EMAILS_FILE = os.path.join(BASE_DIR, "paid_emails.json")
 PRIVATE_CHATS_FILE = os.path.join(BASE_DIR, "private_chats.json")
 GROUP_CHAT_FILE = os.path.join(BASE_DIR, "group_chat.json")
 NOTIFICATIONS_FILE = os.path.join(BASE_DIR, "notifications.json")
+AUTH_SESSIONS_FILE = os.path.join(BASE_DIR, "auth_sessions.json")
 DEFAULT_FROM_EMAIL = "noreply@longform-ai88.com"
 DEFAULT_FROM_NAME = os.getenv("RESEND_FROM_NAME", "RegnbueMatch").strip() or "RegnbueMatch"
 ADMIN_NOTIFICATION_EMAIL = os.getenv("ADMIN_NOTIFICATION_EMAIL", "").strip()
@@ -267,6 +269,40 @@ div[data-testid="stMetric"] {
     padding: 16px;
     margin-top: 10px;
 }
+.priority-banner {
+    border-radius: 20px;
+    padding: 16px 18px;
+    margin: 10px 0;
+    border: 1px solid rgba(162,89,198,0.18);
+    box-shadow: 0 10px 24px rgba(69, 38, 100, 0.08);
+}
+.priority-banner-title {
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: #1d1230;
+    margin-bottom: 4px;
+}
+.priority-banner-text {
+    font-size: 1rem;
+    color: #2d1f45;
+}
+.priority-banner-time {
+    margin-top: 6px;
+    font-size: 0.82rem;
+    color: #6b5a85;
+}
+.like-banner {
+    background: linear-gradient(135deg, rgba(255,79,163,0.16) 0%, rgba(255,255,255,0.96) 100%);
+}
+.match-banner {
+    background: linear-gradient(135deg, rgba(139,92,246,0.16) 0%, rgba(255,255,255,0.96) 100%);
+}
+.message-banner {
+    background: linear-gradient(135deg, rgba(75,139,255,0.16) 0%, rgba(255,255,255,0.96) 100%);
+}
+.notice-banner {
+    background: linear-gradient(135deg, rgba(255,204,0,0.16) 0%, rgba(255,255,255,0.96) 100%);
+}
 .tiny-note {
     color: #6b5a85;
     font-size: 0.88rem;
@@ -312,6 +348,86 @@ def load_json_file(path, default):
 def save_json_file(path, data):
     with open(path, "w", encoding="utf-8") as file:
         json.dump(data, file, ensure_ascii=False, indent=2)
+
+
+def load_auth_sessions():
+    return load_json_file(AUTH_SESSIONS_FILE, {})
+
+
+def save_auth_sessions(sessions):
+    save_json_file(AUTH_SESSIONS_FILE, sessions)
+
+
+def create_auth_session(username):
+    username = (username or "").strip()
+    if not username:
+        return ""
+    sessions = load_auth_sessions()
+    token = secrets.token_urlsafe(24)
+    sessions[token] = {
+        "username": username,
+        "created_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    save_auth_sessions(sessions)
+    return token
+
+
+def get_user_by_auth_token(token):
+    token = (token or "").strip()
+    if not token:
+        return None
+    sessions = load_auth_sessions()
+    session = sessions.get(token, {})
+    return get_user_by_username(session.get("username", "")) if session else None
+
+
+def clear_auth_session(token):
+    token = (token or "").strip()
+    if not token:
+        return
+    sessions = load_auth_sessions()
+    if token in sessions:
+        del sessions[token]
+        save_auth_sessions(sessions)
+
+
+def persist_login_state(user):
+    user = normalize_user(user or {})
+    token = create_auth_session(user.get("username", ""))
+    if token:
+        st.session_state.auth_token = token
+        st.query_params["auth"] = token
+
+
+def clear_persisted_login():
+    clear_auth_session(st.session_state.get("auth_token", ""))
+    st.session_state.auth_token = None
+    if st.query_params.get("auth"):
+        try:
+            del st.query_params["auth"]
+        except Exception:
+            st.query_params.clear()
+
+
+def restore_login_from_storage():
+    auth_token = (st.session_state.get("auth_token") or st.query_params.get("auth") or "").strip()
+    if not auth_token:
+        return
+    remembered_user = get_user_by_auth_token(auth_token)
+    if remembered_user:
+        st.session_state.logged_in = True
+        st.session_state.user = remembered_user
+        st.session_state.is_paid = remembered_user.get("is_paid", False)
+        st.session_state.auth_token = auth_token
+        if st.session_state.mode in {"main", "login", "register"}:
+            st.session_state.mode = "dashboard"
+    else:
+        st.session_state.auth_token = None
+        if st.query_params.get("auth"):
+            try:
+                del st.query_params["auth"]
+            except Exception:
+                st.query_params.clear()
 
 
 def load_notifications():
@@ -590,6 +706,7 @@ def init_session_state():
         "logged_in": False,
         "user": None,
         "is_paid": False,
+        "auth_token": None,
         "verification_code": None,
         "verification_email": None,
         "email_verified": False,
@@ -615,9 +732,11 @@ def init_session_state():
     st.session_state.private_chats = load_private_chats()
     st.session_state.group_chat = load_group_chat_messages()
     st.session_state.notifications = load_notifications()
+    restore_login_from_storage()
     if st.session_state.user:
         refreshed_user = get_user_by_username(st.session_state.user.get("username"))
         if refreshed_user:
+            st.session_state.logged_in = True
             st.session_state.user = refreshed_user
             st.session_state.is_paid = refreshed_user.get("is_paid", False)
 
@@ -1121,6 +1240,7 @@ def render_sidebar():
             else:
                 st.sidebar.info("💎 Full tilgang aktiveres via abonnement.")
         if st.sidebar.button("🚪 Logg ut", key="sidebar_logout"):
+            clear_persisted_login()
             st.session_state.logged_in = False
             st.session_state.user = None
             st.session_state.is_paid = False
@@ -1448,10 +1568,41 @@ def render_login():
             st.session_state.logged_in = True
             st.session_state.user = user
             st.session_state.is_paid = user.get("is_paid", False)
+            persist_login_state(user)
             st.success(f"Velkommen, {user['username']}! 🚀")
             st.rerun()
         else:
             st.error("Feil brukernavn/e-post eller passord.")
+
+
+def render_priority_notifications(user):
+    user = normalize_user(user)
+    unread_items = [item for item in get_user_notifications(user["username"]) if not item.get("read", False)]
+    if not unread_items:
+        return
+
+    banner_class_by_kind = {
+        "like": "like-banner",
+        "match": "match-banner",
+        "message": "message-banner",
+    }
+
+    st.markdown("## 🔔 Nye oppdateringer")
+    for item in unread_items[:3]:
+        banner_class = banner_class_by_kind.get(item.get("kind"), "notice-banner")
+        st.markdown(
+            f"""
+            <div class="priority-banner {banner_class}">
+                <div class="priority-banner-title">{item.get('title', 'Nytt varsel')}</div>
+                <div class="priority-banner-text">{item.get('message', 'Sjekk inboxen for detaljer.')}</div>
+                <div class="priority-banner-time">{item.get('created_at', '')}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    if len(unread_items) > 3:
+        st.caption(f"Du har totalt {len(unread_items)} uleste varsler. Åpne `Inbox` for å se alle.")
 
 
 def render_profile_tab():
@@ -1677,6 +1828,8 @@ def render_dashboard():
     user = normalize_user(st.session_state.user)
     st.session_state.user = user
     st.success(f"Velkommen tilbake, {user['username']}!")
+
+    render_priority_notifications(user)
 
     if not is_profile_complete(user):
         st.info("💡 Gå til `Min profil` for å legge til bilde og fullføre profilen din.")
