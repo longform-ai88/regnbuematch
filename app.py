@@ -1910,28 +1910,46 @@ def render_profile_tab():
 
 def render_matches_tab():
     current_user = normalize_user(st.session_state.user)
-    incoming_like_names = {user['username'] for user in get_incoming_likes(current_user)}
+    incoming_like_users = get_incoming_likes(current_user)
+    incoming_like_names = {user['username'] for user in incoming_like_users}
     suggestions = find_matches(current_user)
 
     st.header("Finn noen")
     st.caption("Det er enkelt: se profil → trykk `Lik` → hvis dere liker hverandre, havner chatten i `Inbox`.")
 
-    if incoming_like_names:
-        st.success(f"💜 {len(incoming_like_names)} person(er) liker deg allerede. Åpne `Inbox` for å svare.")
+    if incoming_like_users:
+        st.subheader("💜 Personer som liker deg")
+        for admirer in incoming_like_users[:3]:
+            with st.container(border=True):
+                image_col, info_col = st.columns([0.34, 0.66], gap="medium")
+                with image_col:
+                    st.image(get_profile_image(admirer), use_container_width=True)
+                with info_col:
+                    st.markdown(f"## {admirer['username']}, {admirer['age']}")
+                    st.caption(admirer.get('bio') or 'Vil gjerne bli kjent med deg.')
+                    st.write(f"{admirer.get('gender', 'Annet')} · Søker {admirer.get('seeking', 'Annet')}")
+                    if st.button(f"💘 Lik tilbake {admirer['username']}", key=f"top_like_back_{admirer['username']}"):
+                        made_match, message = add_match(st.session_state.user['username'], admirer['username'])
+                        if made_match:
+                            st.success(message)
+                        else:
+                            st.info(message)
+                        st.rerun()
 
     if not suggestions:
         st.info("Ingen nye profiler akkurat nå. Sjekk inboxen eller kom tilbake litt senere.")
         return
 
+    st.subheader("✨ Utforsk profiler")
     for match in suggestions:
         with st.container(border=True):
-            top_col, info_col = st.columns([0.3, 0.7], gap="medium")
+            top_col, info_col = st.columns([0.34, 0.66], gap="medium")
             with top_col:
                 st.image(get_profile_image(match), use_container_width=True)
             with info_col:
                 badge = "💘 Liker deg" if match['username'] in incoming_like_names else "✨ Ny profil"
                 st.markdown(f"**{badge}**")
-                st.markdown(f"### {match['username']}, {match['age']}")
+                st.markdown(f"## {match['username']}, {match['age']}")
                 st.caption(match['bio'])
                 st.write(f"{match.get('gender', 'Annet')} · Søker {match.get('seeking', 'Annet')}")
                 button_label = "💘 Lik tilbake" if match['username'] in incoming_like_names else f"💜 Lik {match['username']}"
@@ -1981,10 +1999,13 @@ def render_inbox_tab():
         st.subheader("💜 Liker deg")
         for admirer in incoming_likes:
             with st.container(border=True):
-                info_col, action_col = st.columns([0.72, 0.28], gap="medium")
+                image_col, info_col, action_col = st.columns([0.24, 0.5, 0.26], gap="medium")
+                with image_col:
+                    st.image(get_profile_image(admirer), use_container_width=True)
                 with info_col:
-                    st.markdown(f"**{admirer['username']}**, {admirer['age']} år")
+                    st.markdown(f"## {admirer['username']}, {admirer['age']} år")
                     st.caption(admirer.get('bio') or 'Vil gjerne bli kjent med deg.')
+                    st.write(f"{admirer.get('gender', 'Annet')} · Søker {admirer.get('seeking', 'Annet')}")
                 with action_col:
                     if st.button(f"💘 Match med {admirer['username']}", key=f"like_back_{admirer['username']}"):
                         made_match, message = add_match(current_user['username'], admirer['username'])
@@ -2009,10 +2030,13 @@ def render_inbox_tab():
         history = get_chat(current_user['username'], match['username'])
         last_message = history[-1]['message'] if history else "Ingen meldinger ennå — si hei 👋"
         with st.container(border=True):
-            summary_col, open_col = st.columns([0.72, 0.28], gap="medium")
+            image_col, summary_col, open_col = st.columns([0.2, 0.56, 0.24], gap="medium")
+            with image_col:
+                st.image(get_profile_image(match), use_container_width=True)
             with summary_col:
-                st.markdown(f"**{match['username']}**")
-                st.caption(last_message)
+                st.markdown(f"## {match['username']}")
+                st.caption(match.get('bio') or 'Ny match i inboxen din.')
+                st.write(last_message)
             with open_col:
                 if st.button(f"Åpne chat", key=f"open_chat_{match['username']}"):
                     open_chat_with(match['username'])
