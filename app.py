@@ -1,10 +1,12 @@
 ﻿from dotenv import load_dotenv
+import base64
 import json
 import os
 import random
 import smtplib
 import string
 import urllib.error
+import urllib.parse
 import urllib.request
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -327,20 +329,56 @@ def is_email_paid(email):
 def normalize_user(user):
     username = user.get("username", "Bruker")
     email = (user.get("email") or f"{username.lower().replace(' ', '')}@example.com").lower()
+    phone = (user.get("phone") or "").strip()
+    bio = (user.get("bio") or "Klar for nye matcher 🌈").strip() or "Klar for nye matcher 🌈"
+    photo_url = (user.get("photo_url") or "").strip()
+    photo_data = user.get("photo_data") or ""
     free_access_granted = bool(user.get("free_access_granted", False))
+    profile_completed = bool(user.get("profile_completed", False) or ((photo_url or photo_data) and phone and bio))
     return {
         "username": username,
         "password": user.get("password", "pass123"),
         "email": email,
-        "phone": user.get("phone", ""),
+        "phone": phone,
         "gender": user.get("gender", "Annet"),
         "seeking": user.get("seeking", "Annet"),
         "age": int(user.get("age", 25)),
-        "bio": user.get("bio", "Klar for nye matcher 🌈"),
+        "bio": bio,
         "matches": list(dict.fromkeys(user.get("matches", []))),
+        "photo_url": photo_url,
+        "photo_data": photo_data,
+        "profile_completed": profile_completed,
         "free_access_granted": free_access_granted,
         "is_paid": bool(user.get("is_paid", False) or free_access_granted or is_email_paid(email)),
     }
+
+
+def is_profile_complete(user):
+    return normalize_user(user or {}).get("profile_completed", False)
+
+
+def get_profile_image(user):
+    user = normalize_user(user or {})
+    if user.get("photo_data"):
+        return user["photo_data"]
+    if user.get("photo_url"):
+        return user["photo_url"]
+    seed = urllib.parse.quote(user.get("username", "Bruker"))
+    return f"https://api.dicebear.com/7.x/adventurer/svg?seed={seed}"
+
+
+def make_uploaded_image_data_url(uploaded_file):
+    if uploaded_file is None:
+        return ""
+    try:
+        payload = uploaded_file.getvalue()
+    except Exception:
+        return ""
+    if not payload:
+        return ""
+    mime_type = getattr(uploaded_file, "type", "") or "image/png"
+    encoded = base64.b64encode(payload).decode("utf-8")
+    return f"data:{mime_type};base64,{encoded}"
 
 
 def is_demo_user(user):
@@ -1194,6 +1232,89 @@ def render_login():
             st.error("Feil brukernavn/e-post eller passord.")
 
 
+def render_profile_tab():
+    user = normalize_user(st.session_state.user)
+    st.header("Min profil")
+
+    if is_profile_complete(user):
+        st.success("Profilen din er fullført og klar for nye matcher ✅")
+    else:
+        st.warning("Legg til profilbilde og litt mer info for å fullføre profilen din.")
+
+    preview_col, form_col = st.columns([0.85, 1.15], gap="large")
+    with preview_col:
+        st.image(get_profile_image(user), use_container_width=True)
+        st.markdown(f"**{user['username']}**, {user['age']} år")
+        st.caption(user.get("bio") or "Legg til en bio for å fortelle litt om deg selv.")
+        st.write(f"**Kjønn:** {user.get('gender', 'Annet')}")
+        st.write(f"**Søker:** {user.get('seeking', 'Annet')}")
+        st.write(f"**Telefon:** {user.get('phone') or 'Ikke lagt til ennå'}")
+        st.write(f"**Profilstatus:** {'Komplett ✅' if is_profile_complete(user) else 'Mangler bilde/info'}")
+
+    with form_col:
+        with st.form("profile_edit_form"):
+            gender_options = ["Mann", "Kvinne", "Annet"]
+            seeking_options = ["Mann", "Kvinne", "Annet", "Swingers"]
+            edited_phone = st.text_input("Telefonnummer", value=user.get("phone", ""))
+            edited_age = st.number_input("Alder", min_value=18, max_value=99, value=int(user.get("age", 25)))
+            edited_gender = st.selectbox(
+                "Kjønn",
+                gender_options,
+                index=gender_options.index(user.get("gender", "Annet")) if user.get("gender", "Annet") in gender_options else 2,
+            )
+            edited_seeking = st.selectbox(
+                "Hva søker du etter?",
+                seeking_options,
+                index=seeking_options.index(user.get("seeking", "Annet")) if user.get("seeking", "Annet") in seeking_options else 2,
+            )
+            edited_bio = st.text_area(
+                "Om deg selv",
+                value=user.get("bio", ""),
+                placeholder="Skriv litt om deg selv, interesser og hvem du ønsker å møte.",
+            )
+            uploaded_photo = st.file_uploader("Last opp profilbilde", type=["jpg", "jpeg", "png", "webp"])
+            photo_url = st.text_input(
+                "Eller lim inn bilde-URL",
+                value=user.get("photo_url", ""),
+                placeholder="https://...",
+            )
+            remove_photo = st.checkbox("Bruk standard avatar i stedet")
+            saved = st.form_submit_button("💾 Lagre profil")
+
+        if saved:
+            updated_user = user.copy()
+            updated_user.update({
+                "phone": (edited_phone or "").strip(),
+                "age": int(edited_age),
+                "gender": edited_gender,
+                "seeking": edited_seeking,
+                "bio": (edited_bio or "").strip() or "Ny på RegnbueMatch 🌈",
+            })
+
+            if remove_photo:
+                updated_user["photo_data"] = ""
+                updated_user["photo_url"] = ""
+            else:
+                new_photo_data = make_uploaded_image_data_url(uploaded_photo)
+                if new_photo_data:
+                    updated_user["photo_data"] = new_photo_data
+                    updated_user["photo_url"] = ""
+                else:
+                    cleaned_photo_url = (photo_url or "").strip()
+                    if cleaned_photo_url:
+                        updated_user["photo_url"] = cleaned_photo_url
+                        updated_user["photo_data"] = ""
+
+            updated_user["profile_completed"] = bool(
+                (updated_user.get("photo_data") or updated_user.get("photo_url"))
+                and updated_user.get("phone")
+                and updated_user.get("bio")
+            )
+            update_user_record(updated_user)
+            st.success("Profilen din er oppdatert ✅")
+            st.rerun()
+
+
 def render_matches_tab():
     st.header("Dine matcher")
     matches = find_matches(st.session_state.user)
@@ -1203,7 +1324,7 @@ def render_matches_tab():
 
     for match in matches:
         with st.container(border=True):
-            st.image(f"https://api.dicebear.com/7.x/adventurer/svg?seed={match['username']}", width=80)
+            st.image(get_profile_image(match), width=80)
             st.markdown(f"**{match['username']}**, {match['age']} år")
             st.caption(match['bio'])
             if st.button(f"💘 Match med {match['username']}", key=f"match_{match['username']}"):
@@ -1261,20 +1382,27 @@ def render_ai_tab():
 
 
 def render_dashboard():
-    user = st.session_state.user
+    user = normalize_user(st.session_state.user)
+    st.session_state.user = user
     st.success(f"Velkommen tilbake, {user['username']}!")
+
+    if not is_profile_complete(user):
+        st.info("💡 Gå til `Min profil` for å legge til bilde og fullføre profilen din.")
 
     stats = st.columns(3)
     stats[0].metric("Matcher", len(user.get("matches", [])))
     stats[1].metric("Medlemskap", get_membership_label(user))
-    stats[2].metric("Status", "Online")
+    stats[2].metric("Profil", "Komplett" if is_profile_complete(user) else "Ufullstendig")
 
-    tab_labels = ["Matcher", "Online nå", "Chat", "AI-assistent"]
+    tab_labels = ["Min profil", "Matcher", "Online nå", "Chat", "AI-assistent"]
     if user.get("is_paid", False):
-        tab_labels.insert(3, "Felles Chat")
+        tab_labels.insert(4, "Felles Chat")
 
     tabs = st.tabs(tab_labels)
     tab_index = 0
+    with tabs[tab_index]:
+        render_profile_tab()
+    tab_index += 1
     with tabs[tab_index]:
         render_matches_tab()
     tab_index += 1
@@ -1296,7 +1424,7 @@ def main():
     render_header()
 
     if st.session_state.registration_success:
-        st.success("Bruker registrert! Du kan nå logge inn med brukernavn eller e-post.")
+        st.success("Bruker registrert! Du kan nå logge inn med brukernavn eller e-post, og deretter fullføre profilen under `Min profil`.")
         for level, message in st.session_state.post_registration_messages:
             getattr(st, level, st.info)(message)
         st.session_state.post_registration_messages = []
