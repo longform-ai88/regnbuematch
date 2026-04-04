@@ -739,6 +739,20 @@ def get_user_by_username(username):
     return None
 
 
+def get_user_by_identifier(identifier):
+    identifier = (identifier or "").strip().lower()
+    if not identifier:
+        return None
+    for user in st.session_state.users:
+        normalized_user = normalize_user(user)
+        if identifier in {
+            normalized_user["username"].strip().lower(),
+            normalized_user["email"].strip().lower(),
+        }:
+            return normalized_user
+    return None
+
+
 def update_user_record(updated_user):
     updated_user = normalize_user(updated_user)
     refreshed_users = []
@@ -772,6 +786,10 @@ def init_session_state():
         "verification_attempts": 0,
         "email_delivery_message": None,
         "email_delivery_fallback": False,
+        "password_reset_code": None,
+        "password_reset_identifier": None,
+        "password_reset_message": None,
+        "password_reset_fallback": False,
         "registration_success": False,
         "post_registration_messages": [],
         "private_chats": load_private_chats(),
@@ -809,6 +827,13 @@ def reset_verification_state():
     st.session_state.verification_attempts = 0
     st.session_state.email_delivery_message = None
     st.session_state.email_delivery_fallback = False
+
+
+def reset_password_state():
+    st.session_state.password_reset_code = None
+    st.session_state.password_reset_identifier = None
+    st.session_state.password_reset_message = None
+    st.session_state.password_reset_fallback = False
 
 
 def create_verification_code():
@@ -971,6 +996,32 @@ def send_verification_email(to_email, code):
     )
 
 
+def send_password_reset_email(user, code):
+    username = user.get("username", "venn")
+    to_email = (user.get("email") or "").strip().lower()
+    return send_email_message(
+        to_email=to_email,
+        subject="Tilbakestill passordet ditt",
+        text_body=(
+            f"Hei {username}!\n\n"
+            f"Din kode for å lage nytt passord er: {code}\n\n"
+            "Skriv inn koden i appen og velg nytt passord."
+        ),
+        html_body=(
+            "<div style='font-family:Arial,sans-serif;padding:20px;'>"
+            f"<h2>Hei {username} 👋</h2>"
+            "<p>Bruk denne koden for å tilbakestille passordet ditt:</p>"
+            f"<div style='font-size:32px;font-weight:700;letter-spacing:4px;margin:12px 0;'>{code}</div>"
+            "<p>Skriv inn koden i appen og velg nytt passord.</p>"
+            "</div>"
+        ),
+        success_message=f"Tilbakestillingskode sendt til {to_email} 📧",
+        allow_fallback=True,
+        fallback_message="Koden vises midlertidig direkte i appen så brukeren kan fortsette.",
+        fallback_code=code,
+    )
+
+
 def send_welcome_email(user):
     username = user.get("username", "venn")
     to_email = (user.get("email") or "").strip().lower()
@@ -1068,6 +1119,33 @@ def register_user(username, password, gender, age, bio, seeking, email, phone):
     st.session_state.users.append(new_user)
     save_users(st.session_state.users)
     return True, new_user
+
+
+def update_password_for_user(identifier, new_password):
+    identifier = (identifier or "").strip().lower()
+    new_password = (new_password or "").strip()
+
+    if not identifier or len(new_password) < 4:
+        return False, "Nytt passord må være minst 4 tegn."
+
+    updated_users = []
+    updated_user = None
+    for user in st.session_state.users:
+        normalized_user = normalize_user(user)
+        if identifier in {
+            normalized_user["username"].strip().lower(),
+            normalized_user["email"].strip().lower(),
+        }:
+            normalized_user["password"] = new_password
+            updated_user = normalized_user
+        updated_users.append(normalized_user)
+
+    if not updated_user:
+        return False, "Fant ikke brukeren for passordbytte."
+
+    st.session_state.users = updated_users
+    save_users(updated_users)
+    return True, updated_user
 
 
 def authenticate_user(identifier, password):
@@ -1654,6 +1732,67 @@ def render_login():
             st.rerun()
         else:
             st.error("Feil brukernavn/e-post eller passord.")
+
+    with st.expander("🔑 Glemt passord?"):
+        reset_identifier_input = st.text_input(
+            "Skriv inn brukernavn eller e-post",
+            key="forgot_password_identifier",
+            placeholder="brukernavn eller e-post",
+        )
+
+        if st.button("Send tilbakestillingskode", key="send_password_reset_btn"):
+            reset_user = get_user_by_identifier(reset_identifier_input)
+            if not reset_user:
+                st.error("Fant ingen konto med dette brukernavnet eller denne e-posten.")
+            else:
+                code = create_verification_code()
+                st.session_state.password_reset_code = code
+                st.session_state.password_reset_identifier = reset_user.get("email") or reset_user.get("username")
+                result = send_password_reset_email(reset_user, code)
+                st.session_state.password_reset_message = result["message"]
+                st.session_state.password_reset_fallback = bool(result.get("fallback_code"))
+                if result["ok"]:
+                    if result.get("fallback_code"):
+                        st.warning(result["message"])
+                        st.code(result["fallback_code"])
+                    else:
+                        st.success(result["message"])
+                else:
+                    st.error(result["message"])
+
+        if st.session_state.password_reset_message:
+            if st.session_state.password_reset_fallback and st.session_state.password_reset_code:
+                st.warning(st.session_state.password_reset_message)
+                st.code(st.session_state.password_reset_code)
+            else:
+                st.info(st.session_state.password_reset_message)
+
+        if st.session_state.password_reset_code and st.session_state.password_reset_identifier:
+            st.markdown("#### Lag nytt passord")
+            reset_code_input = st.text_input("Kode", key="password_reset_code_input")
+            new_password = st.text_input("Nytt passord", type="password", key="password_reset_new")
+            confirm_password = st.text_input("Gjenta nytt passord", type="password", key="password_reset_confirm")
+
+            if st.button("Oppdater passord", key="update_password_btn"):
+                if reset_code_input != st.session_state.password_reset_code:
+                    st.error("Feil kode. Prøv igjen.")
+                elif len((new_password or "").strip()) < 4:
+                    st.error("Passordet må være minst 4 tegn.")
+                elif new_password != confirm_password:
+                    st.error("Passordene er ikke like.")
+                else:
+                    success, result = update_password_for_user(st.session_state.password_reset_identifier, new_password)
+                    if success:
+                        reset_password_state()
+                        st.session_state.logged_in = True
+                        st.session_state.user = result
+                        st.session_state.is_paid = result.get("is_paid", False)
+                        persist_login_state(result)
+                        st.success("Passordet er oppdatert, og du er nå logget inn ✅")
+                        st.session_state.mode = "dashboard"
+                        st.rerun()
+                    else:
+                        st.error(result)
 
 
 def render_priority_notifications(user):
