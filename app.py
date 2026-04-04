@@ -305,6 +305,56 @@ div[data-testid="stMetric"] {
 .notice-banner {
     background: linear-gradient(135deg, rgba(255,204,0,0.16) 0%, rgba(255,255,255,0.96) 100%);
 }
+.prompt-card {
+    background: linear-gradient(135deg, rgba(245, 237, 255, 0.95) 0%, rgba(255,255,255,0.98) 100%);
+    border: 1px solid rgba(162,89,198,0.18);
+    border-radius: 16px;
+    padding: 12px 14px;
+    margin: 8px 0;
+}
+.prompt-question {
+    color: #7c3aed;
+    font-size: 0.8rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 4px;
+}
+.prompt-answer {
+    color: #1d1230;
+    font-size: 1rem;
+    font-weight: 600;
+}
+.profile-cta {
+    background: linear-gradient(135deg, rgba(255,79,163,0.10) 0%, rgba(75,139,255,0.10) 100%);
+    border: 1px solid rgba(162,89,198,0.18);
+    border-radius: 20px;
+    padding: 16px;
+    margin: 10px 0 14px;
+}
+.swipe-card {
+    background: rgba(255,255,255,0.94);
+    border: 1px solid rgba(162,89,198,0.14);
+    border-radius: 24px;
+    padding: 14px;
+    box-shadow: 0 14px 34px rgba(69, 38, 100, 0.10);
+    margin-bottom: 12px;
+}
+.swipe-badge {
+    display: inline-block;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: #fff0f7;
+    color: #d63384;
+    font-size: 0.8rem;
+    font-weight: 800;
+    margin-bottom: 8px;
+}
+.action-hint {
+    color: #6b5a85;
+    font-size: 0.92rem;
+    margin-top: 6px;
+}
 .tiny-note {
     color: #6b5a85;
     font-size: 0.88rem;
@@ -610,6 +660,7 @@ def is_email_paid(email):
 
 
 def normalize_user(user):
+    user = user or {}
     username = user.get("username", "Bruker")
     email = (user.get("email") or f"{username.lower().replace(' ', '')}@example.com").lower()
     phone = (user.get("phone") or "").strip()
@@ -630,10 +681,22 @@ def normalize_user(user):
         if fallback_image and fallback_image not in photo_gallery:
             photo_gallery.insert(0, fallback_image)
 
+    prompt_source = user.get("profile_prompts", {})
+    if not isinstance(prompt_source, dict):
+        prompt_source = {}
+    profile_prompts = {
+        "looking_for": (prompt_source.get("looking_for") or "").strip(),
+        "weekend_vibe": (prompt_source.get("weekend_vibe") or "").strip(),
+        "win_me_over": (prompt_source.get("win_me_over") or "").strip(),
+    }
+
     likes_sent = list(dict.fromkeys(user.get("likes_sent", [])))
     liked_by = list(dict.fromkeys(user.get("liked_by", [])))
     free_access_granted = bool(user.get("free_access_granted", False))
-    profile_completed = bool(user.get("profile_completed", False) or (photo_gallery and phone and bio))
+    profile_completed = bool(
+        user.get("profile_completed", False)
+        or (photo_gallery and bio and any(profile_prompts.values()))
+    )
     return {
         "username": username,
         "password": user.get("password", "pass123"),
@@ -649,6 +712,7 @@ def normalize_user(user):
         "photo_url": photo_url,
         "photo_data": photo_data,
         "photo_gallery": photo_gallery,
+        "profile_prompts": profile_prompts,
         "profile_completed": profile_completed,
         "free_access_granted": free_access_granted,
         "is_paid": bool(user.get("is_paid", False) or free_access_granted or is_email_paid(email)),
@@ -670,6 +734,17 @@ def get_profile_gallery_images(user):
 
 def get_profile_image(user):
     return get_profile_gallery_images(user)[0]
+
+
+def get_profile_prompts(user):
+    user = normalize_user(user or {})
+    prompts = user.get("profile_prompts", {})
+    ordered_prompts = [
+        ("Det jeg ser etter", prompts.get("looking_for", "")),
+        ("En perfekt søndag", prompts.get("weekend_vibe", "")),
+        ("Du vinner meg over med", prompts.get("win_me_over", "")),
+    ]
+    return [(label, answer) for label, answer in ordered_prompts if answer]
 
 
 def make_uploaded_image_data_url(uploaded_file):
@@ -699,6 +774,18 @@ def render_other_user_profile_preview(user, key_prefix):
         st.write(f"**Kjønn:** {user.get('gender', 'Annet')}")
         st.write(f"**Søker:** {user.get('seeking', 'Annet')}")
         st.caption(user.get('bio') or 'Ingen bio lagt til ennå.')
+
+        for label, answer in get_profile_prompts(user):
+            st.markdown(
+                f"""
+                <div class="prompt-card">
+                    <div class="prompt-question">{label}</div>
+                    <div class="prompt-answer">{answer}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
         st.caption("🔒 Kontaktinfo er privat. Bruk match og chat for å bli kjent.")
 
 
@@ -829,7 +916,7 @@ def init_session_state():
         "private_chats": load_private_chats(),
         "group_chat": load_group_chat_messages(),
         "notifications": load_notifications(),
-        "dashboard_section": "Finn noen",
+        "dashboard_section": None,
         "pending_dashboard_section": None,
         "active_chat_user": None,
         "discovery_index": 0,
@@ -1420,14 +1507,14 @@ def render_sidebar():
         st.sidebar.caption(f"Medlemskap: {medlemskap}")
         st.sidebar.caption(f"🔔 Varsler: {unread_notifications} uleste")
         st.sidebar.markdown("### Gå direkte til")
+        if st.sidebar.button("� Min profil", key="sidebar_profile"):
+            set_dashboard_section("Min profil")
+            st.rerun()
         if st.sidebar.button("💜 Finn noen", key="sidebar_browse"):
             set_dashboard_section("Finn noen")
             st.rerun()
         if st.sidebar.button("🔔 Inbox", key="sidebar_inbox"):
             set_dashboard_section("Inbox")
-            st.rerun()
-        if st.sidebar.button("👤 Min profil", key="sidebar_profile"):
-            set_dashboard_section("Min profil")
             st.rerun()
         if st.session_state.user.get("is_paid", False):
             if st.sidebar.button("👥 Felles chat", key="sidebar_group_chat"):
@@ -1754,6 +1841,7 @@ def render_register():
             st.session_state.is_paid = payload.get("is_paid", False)
             persist_login_state(payload)
             st.session_state.registration_success = True
+            set_dashboard_section("Min profil")
             st.session_state.mode = "dashboard"
             st.rerun()
         else:
@@ -1773,6 +1861,7 @@ def render_login():
             st.session_state.user = user
             st.session_state.is_paid = user.get("is_paid", False)
             persist_login_state(user)
+            set_dashboard_section("Min profil" if not is_profile_complete(user) else "Finn noen")
             st.success(f"Velkommen, {user['username']}! 🚀")
             st.rerun()
         else:
@@ -1833,6 +1922,7 @@ def render_login():
                         st.session_state.user = result
                         st.session_state.is_paid = result.get("is_paid", False)
                         persist_login_state(result)
+                        set_dashboard_section("Min profil" if not is_profile_complete(result) else "Finn noen")
                         st.success("Passordet er oppdatert, og du er nå logget inn ✅")
                         st.session_state.mode = "dashboard"
                         st.rerun()
@@ -1873,65 +1963,145 @@ def render_priority_notifications(user):
 def render_profile_tab():
     user = normalize_user(st.session_state.user)
     st.header("Min profil")
+    st.caption("Bygg profilen med bilder og korte svar — tett på Hinge-følelsen, men tilpasset RegnbueMatch.")
 
-    if is_profile_complete(user):
-        st.success("Profilen din er fullført og klar for nye matcher ✅")
-    else:
-        st.warning("Legg til bilder og litt mer info for å fullføre profilen din.")
-
+    prompt_answers = user.get("profile_prompts", {})
     current_gallery = get_profile_gallery_images(user)
     saved_gallery = [image for image in user.get("photo_gallery", []) if image]
     existing_url_images = [image for image in saved_gallery if not image.startswith("data:")]
 
-    preview_col, form_col = st.columns([0.85, 1.15], gap="large")
+    completion_checks = [
+        bool(saved_gallery),
+        bool((user.get("bio") or "").strip()),
+        bool(any(prompt_answers.values())),
+    ]
+    completion_percent = int((sum(1 for item in completion_checks if item) / len(completion_checks)) * 100)
+
+    if is_profile_complete(user):
+        st.success("Profilen din er fullført og klar for nye matcher ✅")
+    else:
+        st.warning("Start med bilder og et par korte svar for å gjøre profilen synlig.")
+
+    st.progress(completion_percent)
+    st.caption(f"Profilstyrke: {completion_percent}%")
+
+    preview_col, form_col = st.columns([0.9, 1.1], gap="large")
     with preview_col:
-        if len(current_gallery) > 1:
-            st.image(current_gallery, use_container_width=True)
-            st.caption(f"📸 {len(current_gallery)} bilder på profilen din")
+        with st.container(border=True):
+            if len(current_gallery) > 1:
+                st.image(current_gallery, use_container_width=True)
+                st.caption(f"📸 {len(current_gallery)} bilder på profilen din")
+            else:
+                st.image(current_gallery[0], use_container_width=True)
+            st.markdown(f"### {user['username']}, {user['age']} år")
+            st.caption(user.get("bio") or "Legg til en bio for å fortelle litt om deg selv.")
+            st.write(f"**Kjønn:** {user.get('gender', 'Annet')}")
+            st.write(f"**Søker:** {user.get('seeking', 'Annet')}")
+            st.caption("🔒 Telefonnummer og e-post er private og vises ikke til andre brukere.")
+
+        prompt_pairs = get_profile_prompts(user)
+        if prompt_pairs:
+            st.markdown("#### Prompt-kort")
+            for label, answer in prompt_pairs:
+                st.markdown(
+                    f"""
+                    <div class="prompt-card">
+                        <div class="prompt-question">{label}</div>
+                        <div class="prompt-answer">{answer}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
         else:
-            st.image(current_gallery[0], use_container_width=True)
-        st.markdown(f"**{user['username']}**, {user['age']} år")
-        st.caption(user.get("bio") or "Legg til en bio for å fortelle litt om deg selv.")
-        st.write(f"**Kjønn:** {user.get('gender', 'Annet')}")
-        st.write(f"**Søker:** {user.get('seeking', 'Annet')}")
-        st.write(f"**Profilstatus:** {'Komplett ✅' if is_profile_complete(user) else 'Mangler bilde/info'}")
-        st.caption("🔒 Telefonnummer og e-post er private og vises ikke til andre brukere.")
+            st.info("Legg til noen korte svar under for å gjøre profilen mer personlig.")
 
     with form_col:
-        with st.form("profile_edit_form"):
-            gender_options = ["Mann", "Kvinne", "Annet"]
-            seeking_options = ["Mann", "Kvinne", "Annet", "Swingers"]
-            edited_phone = st.text_input("Telefonnummer (privat)", value=user.get("phone", ""))
-            edited_age = st.number_input("Alder", min_value=18, max_value=99, value=int(user.get("age", 25)))
-            edited_gender = st.selectbox(
-                "Kjønn",
-                gender_options,
-                index=gender_options.index(user.get("gender", "Annet")) if user.get("gender", "Annet") in gender_options else 2,
-            )
-            edited_seeking = st.selectbox(
-                "Hva søker du etter?",
-                seeking_options,
-                index=seeking_options.index(user.get("seeking", "Annet")) if user.get("seeking", "Annet") in seeking_options else 2,
-            )
-            edited_bio = st.text_area(
-                "Om deg selv",
-                value=user.get("bio", ""),
-                placeholder="Skriv litt om deg selv, interesser og hvem du ønsker å møte.",
-            )
+        st.markdown(
+            """
+            <div class="profile-cta">
+                <div class="priority-banner-title">📸 Gjør profilen klar</div>
+                <div class="priority-banner-text">Bruk fanene under: først bilder, så prompts, så detaljer.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        gender_options = ["Mann", "Kvinne", "Annet"]
+        seeking_options = ["Mann", "Kvinne", "Annet", "Swingers"]
+        photo_tab, prompt_tab, detail_tab = st.tabs(["📸 Bilder", "✍️ Prompts", "⚙️ Detaljer"])
+
+        with photo_tab:
             uploaded_photos = st.file_uploader(
-                "Last opp flere profilbilder",
+                "Last opp profilbilder",
                 type=["jpg", "jpeg", "png", "webp"],
                 accept_multiple_files=True,
+                help="Du kan legge til opptil 6 bilder.",
+                key="profile_photo_uploads",
             )
             photo_urls_text = st.text_area(
                 "Eller lim inn bilde-URLer (ett per linje)",
                 value="\n".join(existing_url_images),
                 placeholder="https://...\nhttps://...",
+                key="profile_photo_urls",
             )
-            remove_photo = st.checkbox("Fjern alle profilbilder og bruk standard avatar")
-            saved = st.form_submit_button("💾 Lagre profil")
+            remove_photo = st.checkbox(
+                "Fjern alle profilbilder og bruk standard avatar",
+                key="remove_profile_photos",
+            )
 
-        if saved:
+        with prompt_tab:
+            edited_bio = st.text_area(
+                "Bio",
+                value=user.get("bio", ""),
+                placeholder="Kort, varm og ekte — hva liker du, og hvem håper du å møte?",
+                key="profile_bio_edit",
+            )
+            edited_prompt_looking = st.text_area(
+                "Det jeg ser etter",
+                value=prompt_answers.get("looking_for", ""),
+                placeholder="En trygg, morsom og ekte connection.",
+                key="profile_prompt_looking",
+            )
+            edited_prompt_weekend = st.text_area(
+                "En perfekt søndag",
+                value=prompt_answers.get("weekend_vibe", ""),
+                placeholder="Kaffe, tur og lange samtaler.",
+                key="profile_prompt_weekend",
+            )
+            edited_prompt_win = st.text_area(
+                "Du vinner meg over med",
+                value=prompt_answers.get("win_me_over", ""),
+                placeholder="Humor, ærlighet og god energi.",
+                key="profile_prompt_win",
+            )
+
+        with detail_tab:
+            edited_age = st.number_input(
+                "Alder",
+                min_value=18,
+                max_value=99,
+                value=int(user.get("age", 25)),
+                key="profile_age_edit",
+            )
+            edited_gender = st.selectbox(
+                "Kjønn",
+                gender_options,
+                index=gender_options.index(user.get("gender", "Annet")) if user.get("gender", "Annet") in gender_options else 2,
+                key="profile_gender_edit",
+            )
+            edited_seeking = st.selectbox(
+                "Hva søker du etter?",
+                seeking_options,
+                index=seeking_options.index(user.get("seeking", "Annet")) if user.get("seeking", "Annet") in seeking_options else 2,
+                key="profile_seeking_edit",
+            )
+            edited_phone = st.text_input(
+                "Telefonnummer (privat, valgfritt)",
+                value=user.get("phone", ""),
+                key="profile_phone_edit",
+            )
+
+        if st.button("💾 Lagre profil og bilder", key="save_profile_btn", use_container_width=True):
             updated_user = user.copy()
             updated_user.update({
                 "phone": (edited_phone or "").strip(),
@@ -1939,6 +2109,11 @@ def render_profile_tab():
                 "gender": edited_gender,
                 "seeking": edited_seeking,
                 "bio": (edited_bio or "").strip() or "Ny på RegnbueMatch 🌈",
+                "profile_prompts": {
+                    "looking_for": (edited_prompt_looking or "").strip(),
+                    "weekend_vibe": (edited_prompt_weekend or "").strip(),
+                    "win_me_over": (edited_prompt_win or "").strip(),
+                },
             })
 
             if remove_photo:
@@ -1967,10 +2142,11 @@ def render_profile_tab():
 
             updated_user["profile_completed"] = bool(
                 updated_user.get("photo_gallery")
-                and updated_user.get("phone")
                 and updated_user.get("bio")
+                and any(updated_user.get("profile_prompts", {}).values())
             )
             update_user_record(updated_user)
+            set_dashboard_section("Min profil")
             st.success("Profilen din er oppdatert ✅")
             st.rerun()
 
@@ -1982,7 +2158,7 @@ def render_matches_tab():
     suggestions = find_matches(current_user)
 
     st.header("Finn noen")
-    st.caption("Nå vises én profil om gangen med store bilder og tydelige valg — mye mer som Hinge.")
+    st.caption("Én profil om gangen, tydelige prompt-kort og raske valg — enda nærmere Hinge-flyten.")
 
     if incoming_like_users:
         st.subheader("💜 Liker deg nå")
@@ -2012,12 +2188,13 @@ def render_matches_tab():
     profile = suggestions[card_index]
     gallery_images = get_profile_gallery_images(profile)
     badge = "💘 Denne personen liker deg allerede" if profile['username'] in incoming_like_names else "✨ Anbefalt for deg"
+    prompt_pairs = get_profile_prompts(profile)
 
     st.subheader("✨ Neste profil")
     st.caption(f"Profil {card_index + 1} av {suggestion_total}")
 
     with st.container(border=True):
-        st.markdown(f"**{badge}**")
+        st.markdown(f"<div class='swipe-badge'>{badge}</div>", unsafe_allow_html=True)
         if len(gallery_images) > 1:
             st.image(gallery_images, use_container_width=True)
             st.caption(f"{len(gallery_images)} bilder på profilen")
@@ -2027,37 +2204,64 @@ def render_matches_tab():
         st.markdown(f"## {profile['username']}, {profile['age']}")
         st.caption(profile.get('bio') or 'Klar for å bli kjent med noen nye 🌈')
 
-        detail_cols = st.columns(2, gap="medium")
-        with detail_cols[0]:
-            with st.container(border=True):
-                st.markdown("**Om personen**")
-                st.write(profile.get('gender', 'Annet'))
-            with st.container(border=True):
-                st.markdown("**Vibe**")
-                st.write(profile.get('bio') or 'Rolig, hyggelig og klar for en god samtale.')
-        with detail_cols[1]:
-            with st.container(border=True):
-                st.markdown("**Ser etter**")
-                st.write(profile.get('seeking', 'Annet'))
-            with st.container(border=True):
-                st.markdown("**Status**")
-                st.write("Liker deg allerede 💘" if profile['username'] in incoming_like_names else "Ny profil ✨")
+        top_cols = st.columns(2, gap="medium")
+        with top_cols[0]:
+            st.write(f"**Kjønn:** {profile.get('gender', 'Annet')}")
+        with top_cols[1]:
+            st.write(f"**Ser etter:** {profile.get('seeking', 'Annet')}")
+
+        st.markdown("### Svar på profilen")
+        if prompt_pairs:
+            for label, answer in prompt_pairs[:2]:
+                st.markdown(
+                    f"""
+                    <div class="prompt-card">
+                        <div class="prompt-question">{label}</div>
+                        <div class="prompt-answer">{answer}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+        else:
+            st.markdown(
+                f"""
+                <div class="prompt-card">
+                    <div class="prompt-question">Om {profile['username']}</div>
+                    <div class="prompt-answer">{profile.get('bio') or 'Rolig, hyggelig og klar for en god samtale.'}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
         render_other_user_profile_preview(profile, f"browse_preview_{profile['username']}")
 
-        intro_message = st.text_input(
-            f"Send en liten hilsen til {profile['username']} (valgfritt)",
+        intro_message = st.text_area(
+            f"Send kommentar til {profile['username']} (valgfritt)",
             key=f"discovery_note_{profile['username']}",
-            placeholder="Hei! Du virker veldig hyggelig 😊",
+            placeholder="Kommenter et bilde eller et svar for å skille deg ut 😊",
+            height=90,
         )
+        st.caption("Tips: en kort kommentar føles mer personlig enn bare et like.")
 
-        action_cols = st.columns(3, gap="small")
-        if action_cols[0].button("👋 Neste profil", key=f"skip_{profile['username']}_{card_index}"):
+        action_cols = st.columns(4, gap="small")
+        if action_cols[0].button("✖ Ikke nå", key=f"skip_{profile['username']}_{card_index}"):
             st.session_state.discovery_index = (card_index + 1) % suggestion_total
             st.rerun()
 
+        if action_cols[1].button("💬 Send kommentar", key=f"comment_like_{profile['username']}_{card_index}"):
+            if intro_message.strip():
+                made_match, message = add_match(st.session_state.user['username'], profile['username'], intro_message)
+                st.session_state.discovery_index = card_index
+                if made_match:
+                    st.success(message)
+                else:
+                    st.info(message)
+                st.rerun()
+            else:
+                st.info("Skriv en kort kommentar først, eller bruk `Lik profil`.")
+
         like_label = "💘 Lik tilbake" if profile['username'] in incoming_like_names else "💜 Lik profil"
-        if action_cols[1].button(like_label, key=f"match_{profile['username']}_{card_index}"):
+        if action_cols[2].button(like_label, key=f"match_{profile['username']}_{card_index}"):
             made_match, message = add_match(st.session_state.user['username'], profile['username'], intro_message)
             st.session_state.discovery_index = card_index
             if made_match:
@@ -2066,7 +2270,7 @@ def render_matches_tab():
                 st.info(message)
             st.rerun()
 
-        if action_cols[2].button("📥 Åpne Inbox", key=f"open_inbox_from_{profile['username']}_{card_index}"):
+        if action_cols[3].button("📥 Inbox", key=f"open_inbox_from_{profile['username']}_{card_index}"):
             set_dashboard_section("Inbox")
             st.rerun()
 
@@ -2195,7 +2399,20 @@ def render_dashboard():
     render_priority_notifications(user)
 
     if not is_profile_complete(user):
-        st.info("💡 Start med `Min profil`, så blir resten mye enklere.")
+        st.markdown(
+            """
+            <div class="profile-cta">
+                <div class="priority-banner-title">📸 Fullfør profilen din først</div>
+                <div class="priority-banner-text">Nå ligger bilde- og tekstvalgene inne i <strong>Min profil</strong>, med en enklere Hinge-lignende oppbygging.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        cta_cols = st.columns([0.42, 0.58])
+        if cta_cols[0].button("Åpne Min profil", key="dashboard_profile_cta"):
+            set_dashboard_section("Min profil")
+            st.rerun()
+        cta_cols[1].caption("Legg til bilder, bio og korte svar for å bli mer synlig i appen.")
 
     incoming_likes = get_incoming_likes(user)
     unread_notifications = count_unread_notifications(user["username"])
@@ -2206,12 +2423,12 @@ def render_dashboard():
 
     st.markdown("### Slik bruker du appen")
     st.markdown(
-        "1. **Finn noen** viser én profil om gangen — trykk `Lik profil` eller `Neste profil`.  \n"
-        "2. Se **Inbox** når du får likes, matcher eller meldinger, og svar direkte der.  \n"
-        "3. Oppdater **Min profil** når du vil legge til flere bilder eller bio."
+        "1. **Min profil** er første steg: legg til bilder og korte svar.  \n"
+        "2. **Finn noen** viser én profil om gangen — trykk `Lik profil` eller `Neste profil`.  \n"
+        "3. Se **Inbox** når du får likes, matcher eller meldinger, og svar direkte der."
     )
 
-    section_options = ["Finn noen", "Inbox", "Min profil"]
+    section_options = ["Min profil", "Finn noen", "Inbox"]
     if user.get("is_paid", False):
         section_options.append("Felles chat")
 
@@ -2220,11 +2437,11 @@ def render_dashboard():
     if pending_section in section_options:
         current_section = pending_section
         st.session_state.pending_dashboard_section = None
-    elif current_section not in section_options:
-        if unread_notifications or incoming_likes:
-            current_section = "Inbox"
-        elif not is_profile_complete(user):
+    elif not current_section or current_section not in section_options:
+        if not is_profile_complete(user):
             current_section = "Min profil"
+        elif unread_notifications or incoming_likes:
+            current_section = "Inbox"
         else:
             current_section = "Finn noen"
 
