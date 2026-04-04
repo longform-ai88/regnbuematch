@@ -21,10 +21,15 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 USERS_FILE = os.path.join(BASE_DIR, "users.json")
 PAID_EMAILS_FILE = os.path.join(BASE_DIR, "paid_emails.json")
+PRIVATE_CHATS_FILE = os.path.join(BASE_DIR, "private_chats.json")
+GROUP_CHAT_FILE = os.path.join(BASE_DIR, "group_chat.json")
 DEFAULT_FROM_EMAIL = "noreply@longform-ai88.com"
 DEFAULT_FROM_NAME = os.getenv("RESEND_FROM_NAME", "RegnbueMatch").strip() or "RegnbueMatch"
 ADMIN_NOTIFICATION_EMAIL = os.getenv("ADMIN_NOTIFICATION_EMAIL", "").strip()
 EARLY_ACCESS_LIMIT = 50
+DEFAULT_GROUP_CHAT = [
+    {"sender": "System", "message": "Velkommen til felleschatten i RegnbueMatch 🌈"}
+]
 
 DEMO_PROFILES = [
     {
@@ -307,6 +312,23 @@ def save_json_file(path, data):
         json.dump(data, file, ensure_ascii=False, indent=2)
 
 
+def load_private_chats():
+    return load_json_file(PRIVATE_CHATS_FILE, {})
+
+
+def save_private_chats(chats):
+    save_json_file(PRIVATE_CHATS_FILE, chats)
+
+
+def load_group_chat_messages():
+    messages = load_json_file(GROUP_CHAT_FILE, DEFAULT_GROUP_CHAT)
+    return messages or DEFAULT_GROUP_CHAT.copy()
+
+
+def save_group_chat_messages(messages):
+    save_json_file(GROUP_CHAT_FILE, messages)
+
+
 def load_paid_emails():
     return load_json_file(PAID_EMAILS_FILE, [])
 
@@ -333,6 +355,8 @@ def normalize_user(user):
     bio = (user.get("bio") or "Klar for nye matcher 🌈").strip() or "Klar for nye matcher 🌈"
     photo_url = (user.get("photo_url") or "").strip()
     photo_data = user.get("photo_data") or ""
+    likes_sent = list(dict.fromkeys(user.get("likes_sent", [])))
+    liked_by = list(dict.fromkeys(user.get("liked_by", [])))
     free_access_granted = bool(user.get("free_access_granted", False))
     profile_completed = bool(user.get("profile_completed", False) or ((photo_url or photo_data) and phone and bio))
     return {
@@ -345,6 +369,8 @@ def normalize_user(user):
         "age": int(user.get("age", 25)),
         "bio": bio,
         "matches": list(dict.fromkeys(user.get("matches", []))),
+        "likes_sent": likes_sent,
+        "liked_by": liked_by,
         "photo_url": photo_url,
         "photo_data": photo_data,
         "profile_completed": profile_completed,
@@ -486,10 +512,9 @@ def init_session_state():
         "email_delivery_fallback": False,
         "registration_success": False,
         "post_registration_messages": [],
-        "private_chats": {},
-        "group_chat": [
-            {"sender": "System", "message": "Velkommen til felleschatten i RegnbueMatch 🌈"}
-        ],
+        "private_chats": load_private_chats(),
+        "group_chat": load_group_chat_messages(),
+        "active_chat_user": None,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -498,7 +523,9 @@ def init_session_state():
             else:
                 st.session_state[key] = value
 
-    st.session_state.users = [normalize_user(user) for user in st.session_state.users]
+    st.session_state.users = load_users()
+    st.session_state.private_chats = load_private_chats()
+    st.session_state.group_chat = load_group_chat_messages()
     if st.session_state.user:
         refreshed_user = get_user_by_username(st.session_state.user.get("username"))
         if refreshed_user:
@@ -765,6 +792,8 @@ def register_user(username, password, gender, age, bio, seeking, email, phone):
         "bio": bio or "Ny på RegnbueMatch 🌈",
         "seeking": seeking,
         "matches": [],
+        "likes_sent": [],
+        "liked_by": [],
         "free_access_granted": grant_free_access,
         "is_paid": paid_via_email or session_has_paid_access or grant_free_access,
     })
@@ -786,34 +815,91 @@ def authenticate_user(identifier, password):
     return None
 
 
+def get_incoming_likes(current_user):
+    current_user = normalize_user(current_user)
+    incoming_users = []
+    seen = set()
+    for username in current_user.get("liked_by", []):
+        if username in current_user.get("matches", []) or username in seen:
+            continue
+        liked_user = get_user_by_username(username)
+        if liked_user:
+            incoming_users.append(liked_user)
+            seen.add(username)
+    return incoming_users
+
+
+def get_matched_users(current_user):
+    current_user = normalize_user(current_user)
+    matched_users = []
+    for username in current_user.get("matches", []):
+        matched_user = get_user_by_username(username)
+        if matched_user:
+            matched_users.append(matched_user)
+    return matched_users
+
+
+def open_chat_with(partner_username):
+    st.session_state.active_chat_user = partner_username
+
+
 def find_matches(current_user):
     current_user = normalize_user(current_user)
-    matches = []
+    suggestions = []
+    hidden_users = set(current_user.get("matches", [])) | set(current_user.get("likes_sent", []))
     for user in st.session_state.users:
         user = normalize_user(user)
-        if user["username"] == current_user["username"]:
+        if user["username"] == current_user["username"] or user["username"] in hidden_users:
             continue
         preference_ok = current_user["seeking"] == "Swingers" or user["gender"] in {current_user["seeking"], "Annet"}
         reverse_ok = user["seeking"] == "Swingers" or current_user["gender"] in {user["seeking"], "Annet"}
         age_ok = abs(user["age"] - current_user["age"]) <= 12
         if (preference_ok or reverse_ok) and age_ok:
-            matches.append(user)
-    return matches[:8] or [user for user in st.session_state.users if user["username"] != current_user["username"]][:5]
+            suggestions.append(user)
+    if suggestions:
+        return suggestions[:8]
+    return [
+        normalize_user(user)
+        for user in st.session_state.users
+        if normalize_user(user)["username"] != current_user["username"] and normalize_user(user)["username"] not in hidden_users
+    ][:5]
 
 
 def add_match(current_username, other_username):
+    current_user = get_user_by_username(current_username) or {}
+    if other_username in normalize_user(current_user).get("matches", []):
+        return True, f"Du og {other_username} er allerede en match 💬"
+
+    other_user = get_user_by_username(other_username) or {}
+    other_user_likes = normalize_user(other_user).get("likes_sent", [])
+    mutual_match = current_username in other_user_likes
+
     updated_users = []
-    for user in st.session_state.users:
-        user = normalize_user(user)
-        if user["username"] == current_username and other_username not in user["matches"]:
-            user["matches"].append(other_username)
-        if user["username"] == other_username and current_username not in user["matches"]:
-            user["matches"].append(current_username)
+    for raw_user in st.session_state.users:
+        user = normalize_user(raw_user)
+        if user["username"] == current_username:
+            if other_username not in user["likes_sent"]:
+                user["likes_sent"].append(other_username)
+            if other_username in user.get("liked_by", []):
+                user["liked_by"].remove(other_username)
+            if mutual_match and other_username not in user["matches"]:
+                user["matches"].append(other_username)
+        elif user["username"] == other_username:
+            if current_username not in user["liked_by"]:
+                user["liked_by"].append(current_username)
+            if mutual_match and current_username not in user["matches"]:
+                user["matches"].append(current_username)
         updated_users.append(user)
+
     st.session_state.users = updated_users
     save_users(updated_users)
     if st.session_state.user and st.session_state.user["username"] == current_username:
         st.session_state.user = get_user_by_username(current_username)
+
+    if mutual_match:
+        open_chat_with(other_username)
+        return True, f"Det er en match med {other_username}! Åpne inboxen og start chatten 💜"
+    return False, f"Like sendt til {other_username} 💌"
 
 
 def chat_key(user_a, user_b):
@@ -821,26 +907,36 @@ def chat_key(user_a, user_b):
 
 
 def get_chat(user_a, user_b):
-    return st.session_state.private_chats.get(chat_key(user_a, user_b), [])
+    chats = load_private_chats()
+    st.session_state.private_chats = chats
+    return chats.get(chat_key(user_a, user_b), [])
 
 
 def send_message(user_a, user_b, message):
     if not message.strip():
         return
     key = chat_key(user_a, user_b)
-    history = st.session_state.private_chats.get(key, [])
+    chats = load_private_chats()
+    history = chats.get(key, [])
     history.append({"sender": user_a, "message": message.strip()})
-    st.session_state.private_chats[key] = history
+    chats[key] = history
+    save_private_chats(chats)
+    st.session_state.private_chats = chats
 
 
 def get_group_chat():
-    return st.session_state.group_chat
+    messages = load_group_chat_messages()
+    st.session_state.group_chat = messages
+    return messages
 
 
 def send_group_message(sender, message):
     if not message.strip():
         return
-    st.session_state.group_chat.append({"sender": sender, "message": message.strip()})
+    messages = load_group_chat_messages()
+    messages.append({"sender": sender, "message": message.strip()})
+    save_group_chat_messages(messages)
+    st.session_state.group_chat = messages
 
 
 def ai_assistant_response(question):
@@ -1058,7 +1154,12 @@ def render_home():
             )
             if st.button(f"💫 Vis interesse", key=f"showcase_{person['username']}"):
                 if st.session_state.logged_in:
-                    st.success(f"Hyggelig! {person['username']} er lagt til i dine forslag.")
+                    made_match, message = add_match(st.session_state.user['username'], person['username'])
+                    if made_match:
+                        st.success(message)
+                    else:
+                        st.info(message)
+                    st.rerun()
                 else:
                     st.info("Logg inn eller registrer deg for å begynne å chatte.")
 
@@ -1316,49 +1417,99 @@ def render_profile_tab():
 
 
 def render_matches_tab():
-    st.header("Dine matcher")
-    matches = find_matches(st.session_state.user)
-    if not matches:
-        st.info("Ingen matcher funnet ennå.")
+    current_user = normalize_user(st.session_state.user)
+    incoming_like_names = {user['username'] for user in get_incoming_likes(current_user)}
+    suggestions = find_matches(current_user)
+
+    st.header("Utforsk")
+    st.caption("Trykk `Lik profil` for å sende interesse. Hvis dere liker hverandre, dukker matchen opp i inboxen med en gang.")
+
+    if not suggestions:
+        st.info("Ingen nye profiler akkurat nå. Sjekk inboxen eller kom tilbake litt senere.")
         return
 
-    for match in matches:
+    for match in suggestions:
         with st.container(border=True):
-            st.image(get_profile_image(match), width=80)
-            st.markdown(f"**{match['username']}**, {match['age']} år")
-            st.caption(match['bio'])
-            if st.button(f"💘 Match med {match['username']}", key=f"match_{match['username']}"):
-                add_match(st.session_state.user['username'], match['username'])
-                st.success(f"Du har matchet med {match['username']}!")
-                st.rerun()
+            top_col, info_col = st.columns([0.3, 0.7], gap="medium")
+            with top_col:
+                st.image(get_profile_image(match), use_container_width=True)
+            with info_col:
+                badge = "💘 Liker deg" if match['username'] in incoming_like_names else "✨ Ny profil"
+                st.markdown(f"**{badge}**")
+                st.markdown(f"### {match['username']}, {match['age']}")
+                st.caption(match['bio'])
+                st.write(f"{match.get('gender', 'Annet')} · Søker {match.get('seeking', 'Annet')}")
+                button_label = "💘 Lik tilbake" if match['username'] in incoming_like_names else f"💜 Lik {match['username']}"
+                if st.button(button_label, key=f"match_{match['username']}"):
+                    made_match, message = add_match(st.session_state.user['username'], match['username'])
+                    if made_match:
+                        st.success(message)
+                    else:
+                        st.info(message)
+                    st.rerun()
 
 
-def render_online_tab():
-    st.header("Online nå 🟢")
-    for person in ONLINE_SHOWCASE:
-        with st.container(border=True):
-            st.image(person["img"], use_container_width=True)
-            st.markdown(f"**{person['username']}** · {person['age']} år")
-            st.caption(person["bio"])
+def render_inbox_tab():
+    current_user = normalize_user(st.session_state.user)
+    incoming_likes = get_incoming_likes(current_user)
+    matched_users = get_matched_users(current_user)
 
+    st.header("Inbox")
+    st.caption("Her ser du hvem som liker deg, matchene dine og alle private meldinger.")
 
-def render_chat_tab():
-    st.header("Chat med matcher")
-    my_matches = st.session_state.user.get("matches", [])
-    if not my_matches:
-        st.info("Du har ingen matcher å chatte med ennå.")
+    if incoming_likes:
+        st.subheader("💜 Liker deg")
+        for admirer in incoming_likes:
+            with st.container(border=True):
+                info_col, action_col = st.columns([0.72, 0.28], gap="medium")
+                with info_col:
+                    st.markdown(f"**{admirer['username']}**, {admirer['age']} år")
+                    st.caption(admirer.get('bio') or 'Vil gjerne bli kjent med deg.')
+                with action_col:
+                    if st.button(f"💘 Match med {admirer['username']}", key=f"like_back_{admirer['username']}"):
+                        made_match, message = add_match(current_user['username'], admirer['username'])
+                        if made_match:
+                            st.success(message)
+                        else:
+                            st.info(message)
+                        st.rerun()
+    else:
+        st.info("Ingen nye likes enda. Når noen liker deg, dukker de opp her.")
+
+    st.subheader("💬 Samtaler")
+    if not matched_users:
+        st.info("Ingen matcher ennå. Gå til `Utforsk` og lik noen profiler for å starte en samtale.")
         return
 
-    chat_partner = st.selectbox("Velg match", my_matches, key="chat_partner_select")
-    for item in get_chat(st.session_state.user['username'], chat_partner):
-        role = "user" if item["sender"] == st.session_state.user['username'] else "assistant"
-        with st.chat_message(role):
-            st.write(item["message"])
+    partner_names = [match['username'] for match in matched_users]
+    if st.session_state.active_chat_user not in partner_names:
+        st.session_state.active_chat_user = partner_names[0]
 
-    message = st.text_input("Skriv melding", key="private_message_input")
-    if st.button("Send melding", key="send_chat_btn"):
-        send_message(st.session_state.user['username'], chat_partner, message)
-        st.rerun()
+    for match in matched_users:
+        history = get_chat(current_user['username'], match['username'])
+        last_message = history[-1]['message'] if history else "Ingen meldinger ennå — si hei 👋"
+        with st.container(border=True):
+            summary_col, open_col = st.columns([0.72, 0.28], gap="medium")
+            with summary_col:
+                st.markdown(f"**{match['username']}**")
+                st.caption(last_message)
+            with open_col:
+                if st.button(f"Åpne chat", key=f"open_chat_{match['username']}"):
+                    open_chat_with(match['username'])
+                    st.rerun()
+
+    active_partner = st.session_state.active_chat_user
+    if active_partner:
+        st.markdown(f"### Chat med {active_partner}")
+        for item in get_chat(current_user['username'], active_partner):
+            role = "user" if item["sender"] == current_user['username'] else "assistant"
+            with st.chat_message(role):
+                st.write(item["message"])
+
+        message = st.text_input("Skriv melding", key=f"private_message_input_{active_partner}")
+        if st.button("Send melding", key=f"send_chat_btn_{active_partner}"):
+            send_message(current_user['username'], active_partner, message)
+            st.rerun()
 
 
 def render_group_chat_tab():
@@ -1389,34 +1540,30 @@ def render_dashboard():
     if not is_profile_complete(user):
         st.info("💡 Gå til `Min profil` for å legge til bilde og fullføre profilen din.")
 
+    incoming_likes = get_incoming_likes(user)
     stats = st.columns(3)
     stats[0].metric("Matcher", len(user.get("matches", [])))
-    stats[1].metric("Medlemskap", get_membership_label(user))
+    stats[1].metric("Inbox", len(incoming_likes))
     stats[2].metric("Profil", "Komplett" if is_profile_complete(user) else "Ufullstendig")
 
-    tab_labels = ["Min profil", "Matcher", "Online nå", "Chat", "AI-assistent"]
+    tab_labels = ["Utforsk", "Inbox", "Min profil"]
     if user.get("is_paid", False):
-        tab_labels.insert(4, "Felles Chat")
+        tab_labels.append("Felles Chat")
 
     tabs = st.tabs(tab_labels)
     tab_index = 0
     with tabs[tab_index]:
-        render_profile_tab()
-    tab_index += 1
-    with tabs[tab_index]:
         render_matches_tab()
     tab_index += 1
     with tabs[tab_index]:
-        render_online_tab()
+        render_inbox_tab()
     tab_index += 1
     with tabs[tab_index]:
-        render_chat_tab()
+        render_profile_tab()
     if user.get("is_paid", False):
         tab_index += 1
         with tabs[tab_index]:
             render_group_chat_tab()
-    with tabs[-1]:
-        render_ai_tab()
 
 
 def main():
