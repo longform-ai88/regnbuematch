@@ -616,10 +616,24 @@ def normalize_user(user):
     bio = (user.get("bio") or "Klar for nye matcher 🌈").strip() or "Klar for nye matcher 🌈"
     photo_url = (user.get("photo_url") or "").strip()
     photo_data = user.get("photo_data") or ""
+    gallery_candidates = user.get("photo_gallery", [])
+    if isinstance(gallery_candidates, str):
+        gallery_candidates = [gallery_candidates]
+
+    photo_gallery = []
+    for item in gallery_candidates:
+        cleaned = (item or "").strip() if isinstance(item, str) else ""
+        if cleaned and cleaned not in photo_gallery:
+            photo_gallery.append(cleaned)
+
+    for fallback_image in [photo_data, photo_url]:
+        if fallback_image and fallback_image not in photo_gallery:
+            photo_gallery.insert(0, fallback_image)
+
     likes_sent = list(dict.fromkeys(user.get("likes_sent", [])))
     liked_by = list(dict.fromkeys(user.get("liked_by", [])))
     free_access_granted = bool(user.get("free_access_granted", False))
-    profile_completed = bool(user.get("profile_completed", False) or ((photo_url or photo_data) and phone and bio))
+    profile_completed = bool(user.get("profile_completed", False) or (photo_gallery and phone and bio))
     return {
         "username": username,
         "password": user.get("password", "pass123"),
@@ -634,6 +648,7 @@ def normalize_user(user):
         "liked_by": liked_by,
         "photo_url": photo_url,
         "photo_data": photo_data,
+        "photo_gallery": photo_gallery,
         "profile_completed": profile_completed,
         "free_access_granted": free_access_granted,
         "is_paid": bool(user.get("is_paid", False) or free_access_granted or is_email_paid(email)),
@@ -644,14 +659,17 @@ def is_profile_complete(user):
     return normalize_user(user or {}).get("profile_completed", False)
 
 
-def get_profile_image(user):
+def get_profile_gallery_images(user):
     user = normalize_user(user or {})
-    if user.get("photo_data"):
-        return user["photo_data"]
-    if user.get("photo_url"):
-        return user["photo_url"]
+    gallery_images = [image for image in user.get("photo_gallery", []) if image]
+    if gallery_images:
+        return gallery_images
     seed = urllib.parse.quote(user.get("username", "Bruker"))
-    return f"https://api.dicebear.com/7.x/adventurer/svg?seed={seed}"
+    return [f"https://api.dicebear.com/7.x/adventurer/svg?seed={seed}"]
+
+
+def get_profile_image(user):
+    return get_profile_gallery_images(user)[0]
 
 
 def make_uploaded_image_data_url(uploaded_file):
@@ -666,6 +684,22 @@ def make_uploaded_image_data_url(uploaded_file):
     mime_type = getattr(uploaded_file, "type", "") or "image/png"
     encoded = base64.b64encode(payload).decode("utf-8")
     return f"data:{mime_type};base64,{encoded}"
+
+
+def render_other_user_profile_preview(user, key_prefix):
+    user = normalize_user(user)
+    with st.expander(f"👀 Se profilen til {user['username']}"):
+        gallery_images = get_profile_gallery_images(user)
+        if len(gallery_images) > 1:
+            st.image(gallery_images, use_container_width=True)
+            st.caption(f"{len(gallery_images)} bilder på profilen")
+        else:
+            st.image(gallery_images[0], use_container_width=True)
+        st.markdown(f"### {user['username']}, {user['age']} år")
+        st.write(f"**Kjønn:** {user.get('gender', 'Annet')}")
+        st.write(f"**Søker:** {user.get('seeking', 'Annet')}")
+        st.caption(user.get('bio') or 'Ingen bio lagt til ennå.')
+        st.caption("🔒 Kontaktinfo er privat. Bruk match og chat for å bli kjent.")
 
 
 def is_demo_user(user):
@@ -1832,11 +1866,19 @@ def render_profile_tab():
     if is_profile_complete(user):
         st.success("Profilen din er fullført og klar for nye matcher ✅")
     else:
-        st.warning("Legg til profilbilde og litt mer info for å fullføre profilen din.")
+        st.warning("Legg til bilder og litt mer info for å fullføre profilen din.")
+
+    current_gallery = get_profile_gallery_images(user)
+    saved_gallery = [image for image in user.get("photo_gallery", []) if image]
+    existing_url_images = [image for image in saved_gallery if not image.startswith("data:")]
 
     preview_col, form_col = st.columns([0.85, 1.15], gap="large")
     with preview_col:
-        st.image(get_profile_image(user), use_container_width=True)
+        if len(current_gallery) > 1:
+            st.image(current_gallery, use_container_width=True)
+            st.caption(f"📸 {len(current_gallery)} bilder på profilen din")
+        else:
+            st.image(current_gallery[0], use_container_width=True)
         st.markdown(f"**{user['username']}**, {user['age']} år")
         st.caption(user.get("bio") or "Legg til en bio for å fortelle litt om deg selv.")
         st.write(f"**Kjønn:** {user.get('gender', 'Annet')}")
@@ -1865,13 +1907,17 @@ def render_profile_tab():
                 value=user.get("bio", ""),
                 placeholder="Skriv litt om deg selv, interesser og hvem du ønsker å møte.",
             )
-            uploaded_photo = st.file_uploader("Last opp profilbilde", type=["jpg", "jpeg", "png", "webp"])
-            photo_url = st.text_input(
-                "Eller lim inn bilde-URL",
-                value=user.get("photo_url", ""),
-                placeholder="https://...",
+            uploaded_photos = st.file_uploader(
+                "Last opp flere profilbilder",
+                type=["jpg", "jpeg", "png", "webp"],
+                accept_multiple_files=True,
             )
-            remove_photo = st.checkbox("Bruk standard avatar i stedet")
+            photo_urls_text = st.text_area(
+                "Eller lim inn bilde-URLer (ett per linje)",
+                value="\n".join(existing_url_images),
+                placeholder="https://...\nhttps://...",
+            )
+            remove_photo = st.checkbox("Fjern alle profilbilder og bruk standard avatar")
             saved = st.form_submit_button("💾 Lagre profil")
 
         if saved:
@@ -1887,19 +1933,29 @@ def render_profile_tab():
             if remove_photo:
                 updated_user["photo_data"] = ""
                 updated_user["photo_url"] = ""
+                updated_user["photo_gallery"] = []
             else:
-                new_photo_data = make_uploaded_image_data_url(uploaded_photo)
-                if new_photo_data:
-                    updated_user["photo_data"] = new_photo_data
-                    updated_user["photo_url"] = ""
-                else:
-                    cleaned_photo_url = (photo_url or "").strip()
-                    if cleaned_photo_url:
-                        updated_user["photo_url"] = cleaned_photo_url
-                        updated_user["photo_data"] = ""
+                gallery_images = [image for image in user.get("photo_gallery", []) if image and image.startswith("data:")]
+                for uploaded_photo in uploaded_photos or []:
+                    new_photo_data = make_uploaded_image_data_url(uploaded_photo)
+                    if new_photo_data and new_photo_data not in gallery_images:
+                        gallery_images.append(new_photo_data)
+
+                cleaned_photo_urls = []
+                for line in (photo_urls_text or "").splitlines():
+                    cleaned_line = line.strip()
+                    if cleaned_line and cleaned_line not in cleaned_photo_urls:
+                        cleaned_photo_urls.append(cleaned_line)
+
+                gallery_images.extend(cleaned_photo_urls)
+                gallery_images = gallery_images[:6]
+                updated_user["photo_gallery"] = gallery_images
+                primary_image = gallery_images[0] if gallery_images else ""
+                updated_user["photo_data"] = primary_image if primary_image.startswith("data:") else ""
+                updated_user["photo_url"] = primary_image if primary_image and not primary_image.startswith("data:") else ""
 
             updated_user["profile_completed"] = bool(
-                (updated_user.get("photo_data") or updated_user.get("photo_url"))
+                updated_user.get("photo_gallery")
                 and updated_user.get("phone")
                 and updated_user.get("bio")
             )
@@ -1928,6 +1984,7 @@ def render_matches_tab():
                     st.markdown(f"## {admirer['username']}, {admirer['age']}")
                     st.caption(admirer.get('bio') or 'Vil gjerne bli kjent med deg.')
                     st.write(f"{admirer.get('gender', 'Annet')} · Søker {admirer.get('seeking', 'Annet')}")
+                    render_other_user_profile_preview(admirer, f"top_like_preview_{admirer['username']}")
                     if st.button(f"💘 Lik tilbake {admirer['username']}", key=f"top_like_back_{admirer['username']}"):
                         made_match, message = add_match(st.session_state.user['username'], admirer['username'])
                         if made_match:
@@ -1952,6 +2009,7 @@ def render_matches_tab():
                 st.markdown(f"## {match['username']}, {match['age']}")
                 st.caption(match['bio'])
                 st.write(f"{match.get('gender', 'Annet')} · Søker {match.get('seeking', 'Annet')}")
+                render_other_user_profile_preview(match, f"browse_preview_{match['username']}")
                 button_label = "💘 Lik tilbake" if match['username'] in incoming_like_names else f"💜 Lik {match['username']}"
                 if st.button(button_label, key=f"match_{match['username']}"):
                     made_match, message = add_match(st.session_state.user['username'], match['username'])
@@ -2006,6 +2064,7 @@ def render_inbox_tab():
                     st.markdown(f"## {admirer['username']}, {admirer['age']} år")
                     st.caption(admirer.get('bio') or 'Vil gjerne bli kjent med deg.')
                     st.write(f"{admirer.get('gender', 'Annet')} · Søker {admirer.get('seeking', 'Annet')}")
+                    render_other_user_profile_preview(admirer, f"inbox_like_preview_{admirer['username']}")
                 with action_col:
                     if st.button(f"💘 Match med {admirer['username']}", key=f"like_back_{admirer['username']}"):
                         made_match, message = add_match(current_user['username'], admirer['username'])
@@ -2037,6 +2096,7 @@ def render_inbox_tab():
                 st.markdown(f"## {match['username']}")
                 st.caption(match.get('bio') or 'Ny match i inboxen din.')
                 st.write(last_message)
+                render_other_user_profile_preview(match, f"matched_profile_preview_{match['username']}")
             with open_col:
                 if st.button(f"Åpne chat", key=f"open_chat_{match['username']}"):
                     open_chat_with(match['username'])
