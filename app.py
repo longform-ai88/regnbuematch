@@ -5,6 +5,7 @@ import os
 import random
 import secrets
 import smtplib
+import sqlite3
 import string
 import urllib.error
 import urllib.parse
@@ -27,6 +28,7 @@ PRIVATE_CHATS_FILE = os.path.join(BASE_DIR, "private_chats.json")
 GROUP_CHAT_FILE = os.path.join(BASE_DIR, "group_chat.json")
 NOTIFICATIONS_FILE = os.path.join(BASE_DIR, "notifications.json")
 AUTH_SESSIONS_FILE = os.path.join(BASE_DIR, "auth_sessions.json")
+DATA_DB_FILE = os.path.join(BASE_DIR, "regnbuematch.db")
 DEFAULT_FROM_EMAIL = "noreply@longform-ai88.com"
 DEFAULT_FROM_NAME = os.getenv("RESEND_FROM_NAME", "RegnbueMatch").strip() or "RegnbueMatch"
 ADMIN_NOTIFICATION_EMAIL = os.getenv("ADMIN_NOTIFICATION_EMAIL", "").strip()
@@ -335,19 +337,75 @@ div[data-testid="stMetric"] {
 """
 
 
+def get_storage_key(path):
+    return os.path.splitext(os.path.basename(path))[0]
+
+
+def ensure_storage_db():
+    with sqlite3.connect(DATA_DB_FILE) as connection:
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS app_state (
+                storage_key TEXT PRIMARY KEY,
+                json_value TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.commit()
+
+
 def load_json_file(path, default):
+    storage_key = get_storage_key(path)
+    try:
+        ensure_storage_db()
+        with sqlite3.connect(DATA_DB_FILE) as connection:
+            row = connection.execute(
+                "SELECT json_value FROM app_state WHERE storage_key = ?",
+                (storage_key,),
+            ).fetchone()
+        if row and row[0]:
+            return json.loads(row[0])
+    except (sqlite3.Error, json.JSONDecodeError, TypeError):
+        pass
+
     if os.path.exists(path):
         try:
             with open(path, "r", encoding="utf-8") as file:
-                return json.load(file)
+                legacy_data = json.load(file)
+            save_json_file(path, legacy_data)
+            return legacy_data
         except (json.JSONDecodeError, OSError):
             return default
     return default
 
 
 def save_json_file(path, data):
-    with open(path, "w", encoding="utf-8") as file:
-        json.dump(data, file, ensure_ascii=False, indent=2)
+    serialized = json.dumps(data, ensure_ascii=False, indent=2)
+    storage_key = get_storage_key(path)
+
+    try:
+        ensure_storage_db()
+        with sqlite3.connect(DATA_DB_FILE) as connection:
+            connection.execute(
+                """
+                INSERT INTO app_state (storage_key, json_value, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(storage_key) DO UPDATE SET
+                    json_value = excluded.json_value,
+                    updated_at = excluded.updated_at
+                """,
+                (storage_key, serialized, datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")),
+            )
+            connection.commit()
+    except sqlite3.Error:
+        pass
+
+    try:
+        with open(path, "w", encoding="utf-8") as file:
+            file.write(serialized)
+    except OSError:
+        pass
 
 
 def load_auth_sessions():
@@ -1567,8 +1625,12 @@ def render_register():
 
             st.session_state.post_registration_messages = delivery_updates
             reset_verification_state()
+            st.session_state.logged_in = True
+            st.session_state.user = payload
+            st.session_state.is_paid = payload.get("is_paid", False)
+            persist_login_state(payload)
             st.session_state.registration_success = True
-            st.session_state.mode = "login"
+            st.session_state.mode = "dashboard"
             st.rerun()
         else:
             st.error(payload)
@@ -1915,7 +1977,7 @@ def main():
     render_header()
 
     if st.session_state.registration_success:
-        st.success("Bruker registrert! Du kan nå logge inn med brukernavn eller e-post, og deretter fullføre profilen under `Min profil`.")
+        st.success("Profil opprettet! Du er nå logget inn og kan fullføre profilen under `Min profil`.")
         for level, message in st.session_state.post_registration_messages:
             getattr(st, level, st.info)(message)
         st.session_state.post_registration_messages = []
