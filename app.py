@@ -719,6 +719,7 @@ def init_session_state():
         "private_chats": load_private_chats(),
         "group_chat": load_group_chat_messages(),
         "notifications": load_notifications(),
+        "dashboard_section": "Finn noen",
         "active_chat_user": None,
     }
     for key, value in defaults.items():
@@ -1047,8 +1048,14 @@ def get_matched_users(current_user):
     return matched_users
 
 
+def set_dashboard_section(section_name):
+    st.session_state.dashboard_section = section_name
+    st.session_state.mode = "dashboard"
+
+
 def open_chat_with(partner_username):
     st.session_state.active_chat_user = partner_username
+    set_dashboard_section("Inbox")
 
 
 def find_matches(current_user):
@@ -1230,9 +1237,20 @@ def render_sidebar():
         unread_notifications = count_unread_notifications(st.session_state.user["username"])
         st.sidebar.caption(f"Medlemskap: {medlemskap}")
         st.sidebar.caption(f"🔔 Varsler: {unread_notifications} uleste")
-        if st.sidebar.button("🏠 Forside", key="sidebar_home_logged"):
-            st.session_state.mode = "main"
+        st.sidebar.markdown("### Gå direkte til")
+        if st.sidebar.button("💜 Finn noen", key="sidebar_browse"):
+            set_dashboard_section("Finn noen")
             st.rerun()
+        if st.sidebar.button("🔔 Inbox", key="sidebar_inbox"):
+            set_dashboard_section("Inbox")
+            st.rerun()
+        if st.sidebar.button("👤 Min profil", key="sidebar_profile"):
+            set_dashboard_section("Min profil")
+            st.rerun()
+        if st.session_state.user.get("is_paid", False):
+            if st.sidebar.button("👥 Felles chat", key="sidebar_group_chat"):
+                set_dashboard_section("Felles chat")
+                st.rerun()
         if not st.session_state.user.get("is_paid", False):
             spots_left = early_access_spots_left()
             if spots_left > 0:
@@ -1693,8 +1711,11 @@ def render_matches_tab():
     incoming_like_names = {user['username'] for user in get_incoming_likes(current_user)}
     suggestions = find_matches(current_user)
 
-    st.header("Utforsk")
-    st.caption("Trykk `Lik profil` for å sende interesse. Hvis dere liker hverandre, dukker matchen opp i inboxen med en gang.")
+    st.header("Finn noen")
+    st.caption("Det er enkelt: se profil → trykk `Lik` → hvis dere liker hverandre, havner chatten i `Inbox`.")
+
+    if incoming_like_names:
+        st.success(f"💜 {len(incoming_like_names)} person(er) liker deg allerede. Åpne `Inbox` for å svare.")
 
     if not suggestions:
         st.info("Ingen nye profiler akkurat nå. Sjekk inboxen eller kom tilbake litt senere.")
@@ -1729,7 +1750,12 @@ def render_inbox_tab():
     unread_notifications = count_unread_notifications(current_user["username"])
 
     st.header("Inbox")
-    st.caption("Her ser du varsler, hvem som liker deg, matchene dine og alle private meldinger.")
+    st.caption("Alt viktig vises her: varsler, likes, matcher og meldinger.")
+
+    summary_cols = st.columns(3)
+    summary_cols[0].metric("Likes", len(incoming_likes))
+    summary_cols[1].metric("Matcher", len(matched_users))
+    summary_cols[2].metric("Varsler", unread_notifications)
 
     notice_col, action_col = st.columns([0.7, 0.3])
     with notice_col:
@@ -1832,7 +1858,7 @@ def render_dashboard():
     render_priority_notifications(user)
 
     if not is_profile_complete(user):
-        st.info("💡 Gå til `Min profil` for å legge til bilde og fullføre profilen din.")
+        st.info("💡 Start med `Min profil`, så blir resten mye enklere.")
 
     incoming_likes = get_incoming_likes(user)
     unread_notifications = count_unread_notifications(user["username"])
@@ -1841,24 +1867,47 @@ def render_dashboard():
     stats[1].metric("Varsler", unread_notifications)
     stats[2].metric("Profil", "Komplett" if is_profile_complete(user) else "Ufullstendig")
 
-    tab_labels = ["Utforsk", "Inbox", "Min profil"]
-    if user.get("is_paid", False):
-        tab_labels.append("Felles Chat")
+    st.markdown("### Slik bruker du appen")
+    st.markdown(
+        "1. **Finn noen** og trykk `Lik` på profiler du liker.  \n"
+        "2. Se **Inbox** når du får likes, matcher eller meldinger.  \n"
+        "3. Oppdater **Min profil** når du vil legge til bilde eller bio."
+    )
 
-    tabs = st.tabs(tab_labels)
-    tab_index = 0
-    with tabs[tab_index]:
-        render_matches_tab()
-    tab_index += 1
-    with tabs[tab_index]:
-        render_inbox_tab()
-    tab_index += 1
-    with tabs[tab_index]:
-        render_profile_tab()
+    section_options = ["Finn noen", "Inbox", "Min profil"]
     if user.get("is_paid", False):
-        tab_index += 1
-        with tabs[tab_index]:
-            render_group_chat_tab()
+        section_options.append("Felles chat")
+
+    if st.session_state.get("dashboard_section") not in section_options:
+        if unread_notifications or incoming_likes:
+            st.session_state.dashboard_section = "Inbox"
+        elif not is_profile_complete(user):
+            st.session_state.dashboard_section = "Min profil"
+        else:
+            st.session_state.dashboard_section = "Finn noen"
+
+    quick_cols = st.columns(len(section_options))
+    for index, section_name in enumerate(section_options):
+        if quick_cols[index].button(section_name, key=f"quick_nav_{section_name}"):
+            set_dashboard_section(section_name)
+            st.rerun()
+
+    selected_section = st.radio(
+        "Velg side",
+        section_options,
+        key="dashboard_section",
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+
+    if selected_section == "Finn noen":
+        render_matches_tab()
+    elif selected_section == "Inbox":
+        render_inbox_tab()
+    elif selected_section == "Min profil":
+        render_profile_tab()
+    elif selected_section == "Felles chat":
+        render_group_chat_tab()
 
 
 def main():
