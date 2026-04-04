@@ -383,6 +383,16 @@ div[data-testid="stMetric"] {
         font-size: 0.9rem;
     }
 }
+div[role="radiogroup"] {
+    gap: 0.5rem;
+    margin: 0.3rem 0 1rem 0;
+}
+div[role="radiogroup"] label {
+    background: rgba(255,255,255,0.92);
+    border: 1px solid rgba(162,89,198,0.18);
+    border-radius: 999px;
+    padding: 0.35rem 0.9rem;
+}
 </style>
 """
 
@@ -2403,7 +2413,7 @@ def render_dashboard():
             """
             <div class="profile-cta">
                 <div class="priority-banner-title">📸 Fullfør profilen din først</div>
-                <div class="priority-banner-text">Nå ligger bilde- og tekstvalgene inne i <strong>Min profil</strong>, med en enklere Hinge-lignende oppbygging.</div>
+                <div class="priority-banner-text">Legg til bilder, bio og korte svar i <strong>Min profil</strong> for å bli synlig og klar for matcher.</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -2445,13 +2455,7 @@ def render_dashboard():
         else:
             current_section = "Finn noen"
 
-    quick_cols = st.columns(len(section_options))
-    for index, section_name in enumerate(section_options):
-        if quick_cols[index].button(section_name, key=f"quick_nav_{section_name}"):
-            current_section = section_name
-            set_dashboard_section(section_name)
-            st.rerun()
-
+    st.caption("Velg side")
     selected_section = st.radio(
         "Velg side",
         section_options,
