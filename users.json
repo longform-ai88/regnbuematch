@@ -1,1 +1,62 @@
-[{"username": "Olav", "password": "123-123", "email": "tobias.mikkelsen@hotmail.com"}]
+[
+  {
+    "username": "Olav",
+    "password": "123-123",
+    "email": "tobias.mikkelsen@hotmail.com",
+    "phone": "",
+    "gender": "Annet",
+    "seeking": "Annet",
+    "age": 25,
+    "bio": "Klar for nye matcher 🌈",
+    "matches": [],
+    "is_paid": false
+  },
+  {
+    "username": "PrideAlex",
+    "password": "pass123",
+    "email": "alex@regnbuematch.no",
+    "phone": "90000001",
+    "gender": "Mann",
+    "seeking": "Mann",
+    "age": 28,
+    "bio": "Liker konserter, kaffeprat og spontane helgeturer 🌈",
+    "matches": [],
+    "is_paid": true
+  },
+  {
+    "username": "RainbowSara",
+    "password": "pass123",
+    "email": "sara@regnbuematch.no",
+    "phone": "90000002",
+    "gender": "Kvinne",
+    "seeking": "Kvinne",
+    "age": 26,
+    "bio": "Trygg, sosial og alltid klar for en god samtale ✨",
+    "matches": [],
+    "is_paid": true
+  },
+  {
+    "username": "QueerChris",
+    "password": "pass123",
+    "email": "chris@regnbuematch.no",
+    "phone": "90000003",
+    "gender": "Annet",
+    "seeking": "Annet",
+    "age": 31,
+    "bio": "Filmkveld, humor og ærlige relasjoner er min vibe 💜",
+    "matches": [],
+    "is_paid": false
+  },
+  {
+    "username": "NovaKim",
+    "password": "pass123",
+    "email": "nova@regnbuematch.no",
+    "phone": "90000004",
+    "gender": "Kvinne",
+    "seeking": "Mann",
+    "age": 29,
+    "bio": "Elsker god mat, fjellturer og små romantiske øyeblikk.",
+    "matches": [],
+    "is_paid": true
+  }
+]
