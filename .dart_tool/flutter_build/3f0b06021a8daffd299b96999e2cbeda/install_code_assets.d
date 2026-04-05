@@ -1,0 +1,1 @@
+ C:\\projects\\RegnbueMatch\\.dart_tool\\flutter_build\\3f0b06021a8daffd299b96999e2cbeda\\native_assets.json: 
