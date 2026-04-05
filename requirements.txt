@@ -2,3 +2,5 @@ stripe
 python-dotenv
 streamlit
 openai
+fastapi
+uvicorn
