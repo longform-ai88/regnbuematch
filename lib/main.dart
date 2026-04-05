@@ -1,25 +1,72 @@
 import 'dart:convert';
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
-const String BASE_URL = "http://192.168.1.185:8000";
-
-Future<String> sendToAI(String prompt) async {
-  final response = await http.post(
-    Uri.parse('http://127.0.0.1:8000/ai'),
-    headers: {"Content-Type": "application/json"},
-    body: jsonEncode({"prompt": prompt}),
-  );
-
-  final data = jsonDecode(response.body);
-  return data["result"];
+String get baseUrl {
+  if (kIsWeb) return 'http://127.0.0.1:8000';
+  if (defaultTargetPlatform == TargetPlatform.android) {
+    return 'http://10.0.2.2:8000';
+  }
+  return 'http://127.0.0.1:8000';
 }
 
-List users = [
-  {"name": "Alex", "age": 24, "image": "https://i.pravatar.cc/300?img=1"},
-  {"name": "Sam", "age": 27, "image": "https://i.pravatar.cc/300?img=2"},
-  {"name": "Lina", "age": 22, "image": "https://i.pravatar.cc/300?img=3"},
+Future<String> sendToAI(String prompt) async {
+  const personalities = [
+    "Svar flørtete og leken, som en match med selvtillit.",
+    "Svar morsomt og litt ertete, men varmt.",
+    "Svar med litt attitude, sjarm og glimt i øyet.",
+    "Svar rolig, trygg og ekte, som en person som er interessert.",
+  ];
+
+  try {
+    final style = personalities[Random().nextInt(personalities.length)];
+
+    final response = await http.post(
+      Uri.parse('$baseUrl/ai'),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({
+        "prompt": "Brukerens melding: $prompt\n\n$style\nHold svaret kort, naturlig og på norsk. Hvis brukeren ber om en bio, skriv en kort datingbio.",
+      }),
+    );
+
+    print("STATUS: ${response.statusCode}");
+    print("BODY: ${response.body}");
+
+    final data = jsonDecode(utf8.decode(response.bodyBytes));
+    return data["result"] ?? "Ingen svar";
+  } catch (e) {
+    print("ERROR: $e");
+    return "FEIL: $e";
+  }
+}
+
+List<Map<String, dynamic>> users = [
+  {
+    "name": "Alex",
+    "age": 24,
+    "image": "https://i.pravatar.cc/400?img=1",
+    "bio": "Liker konserter, sene byturer og folk med glimt i øyet.",
+    "city": "Oslo",
+    "vibe": "Spontan ✨",
+  },
+  {
+    "name": "Sam",
+    "age": 27,
+    "image": "https://i.pravatar.cc/400?img=2",
+    "bio": "Kaffe, humor og roadtrips er min kjærlighetsspråk.",
+    "city": "Bergen",
+    "vibe": "Morsom 😄",
+  },
+  {
+    "name": "Lina",
+    "age": 22,
+    "image": "https://i.pravatar.cc/400?img=3",
+    "bio": "Myk energi, skarp humor og alltid klar for nye eventyr.",
+    "city": "Trondheim",
+    "vibe": "Flørtete 💕",
+  },
 ];
 
 void main() {
@@ -42,241 +89,329 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  double x = 100;
-  double y = 200;
+  double x = 0;
+  double y = 0;
   int currentIndex = 0;
-  List likedUsers = [];
-  String result = "";
+  final List<Map<String, dynamic>> likedUsers = [];
 
-  @override
-  void initState() {
-    super.initState();
-    x = 0;
-    y = 0;
-  }
+  void handleLike() {
+    if (currentIndex >= users.length) return;
 
-  void handleAI() async {
-    String res = await sendToAI("Lag en kul dating bio");
+    final matchedUser = users[currentIndex];
 
     setState(() {
-      result = res;
+      likedUsers.add(matchedUser);
+      currentIndex++;
+      x = 0;
+      y = 0;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text("It’s a match med ${matchedUser['name']} 💘"),
+        backgroundColor: Colors.pink,
+      ),
+    );
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ChatPage(name: matchedUser['name']),
+      ),
+    );
+  }
+
+  void handleNope() {
+    if (currentIndex >= users.length) return;
+
+    setState(() {
+      currentIndex++;
+      x = 0;
+      y = 0;
     });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.pink[50],
+      backgroundColor: Color(0xFFFFF5FA),
       appBar: AppBar(
         title: Text("Regnbuematch 🌈"),
         centerTitle: true,
         backgroundColor: Colors.pink,
       ),
-      body: Center(
+      body: Padding(
+        padding: EdgeInsets.all(16),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ElevatedButton(
-              onPressed: handleAI,
-              child: Text("Test AI"),
+            Text(
+              "Swipe for å finne en vibe ✨",
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
-            SizedBox(height: 20),
-            Container(
-              padding: EdgeInsets.all(20),
-              margin: EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(color: Colors.black12, blurRadius: 10)
+            SizedBox(height: 6),
+            Text(
+              "Lik for match og åpne chat med én gang.",
+              style: TextStyle(color: Colors.black54),
+            ),
+            SizedBox(height: 16),
+            Expanded(
+              child: currentIndex >= users.length
+                  ? buildMatchesView()
+                  : Center(
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          if (currentIndex + 1 < users.length)
+                            Opacity(
+                              opacity: 0.55,
+                              child: buildCardAt(currentIndex + 1, scale: 0.95),
+                            ),
+                          buildDraggableCard(),
+                        ],
+                      ),
+                    ),
+            ),
+            if (currentIndex < users.length) ...[
+              SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  buildActionButton(
+                    icon: Icons.close,
+                    color: Colors.grey.shade700,
+                    onTap: handleNope,
+                  ),
+                  buildActionButton(
+                    icon: Icons.favorite,
+                    color: Colors.pink,
+                    onTap: handleLike,
+                  ),
                 ],
               ),
-              child: Text(
-                result,
-                style: TextStyle(fontSize: 16),
-              ),
-            ),
+            ],
           ],
         ),
       ),
     );
   }
 
-  Widget buildDraggableCard() {
-    if (currentIndex >= users.length) {
-      final matches = likedUsers.map((user) => user['name'] as String).toList();
-
+  Widget buildMatchesView() {
+    if (likedUsers.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text("No more users"),
-            SizedBox(height: 20),
-            Text("Matches:", style: TextStyle(fontSize: 20)),
-            Column(
-              children: matches.map((name) {
-                return GestureDetector(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => ChatPage(name: name),
-                      ),
-                    );
-                  },
-                  child: Padding(
-                    padding: EdgeInsets.all(8),
-                    child: Text(
-                      name,
-                      style: TextStyle(fontSize: 18, color: Colors.blue),
-                    ),
-                  ),
-                );
-              }).toList(),
+            Text("Ingen matcher ennå 💔", style: TextStyle(fontSize: 22)),
+            SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: () {
+                setState(() {
+                  currentIndex = 0;
+                  x = 0;
+                  y = 0;
+                });
+              },
+              child: Text("Prøv igjen"),
             ),
           ],
         ),
       );
     }
 
-    return AnimatedPositioned(
-      duration: Duration(milliseconds: 500),
-      left: MediaQuery.of(context).size.width / 2 - 150 + x,
-      top: MediaQuery.of(context).size.height / 2 - 200 + y,
-      child: Transform(
-        transform: Matrix4.rotationZ(x / 300),
-        child: GestureDetector(
-          onPanUpdate: (details) {
-            setState(() {
-              x += details.delta.dx;
-              y = 0;
-            });
-          },
-          onPanEnd: (details) {
-            if (x > 100) {
-              print("LIKE 👍");
-
-              likedUsers.add(users[currentIndex]);
-
-              setState(() {
-                currentIndex++;
-                x = 0;
-                y = 0;
-              });
-            } else if (x < -100) {
-              print("NOPE ❌");
-
-              setState(() {
-                currentIndex++;
-                x = 0;
-                y = 0;
-              });
-            } else {
-              setState(() {
-                x = 0;
-                y = 0;
-              });
-            }
-          },
-          child: Stack(
-            children: [
-              buildCard(),
-              if (x > 20)
-                Positioned(
-                  top: 50,
-                  left: 20,
-                  child: Opacity(
-                    opacity: (x.abs() / 100).clamp(0, 1),
-                    child: Text(
-                      "LIKE 👍",
-                      style: TextStyle(
-                        fontSize: 32,
-                        color: Colors.green,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          "Dine matcher 💘",
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        ),
+        SizedBox(height: 12),
+        Expanded(
+          child: ListView.builder(
+            itemCount: likedUsers.length,
+            itemBuilder: (context, index) {
+              final user = likedUsers[index];
+              return Card(
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundImage: NetworkImage(user['image']),
                   ),
-                ),
-              if (x < -20)
-                Positioned(
-                  top: 50,
-                  right: 20,
-                  child: Opacity(
-                    opacity: (x.abs() / 100).clamp(0, 1),
-                    child: Text(
-                      "NOPE ❌",
-                      style: TextStyle(
-                        fontSize: 32,
-                        color: Colors.red,
-                        fontWeight: FontWeight.bold,
+                  title: Text(user['name']),
+                  subtitle: Text(user['bio']),
+                  trailing: Icon(Icons.chat_bubble, color: Colors.pink),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => ChatPage(name: user['name']),
                       ),
-                    ),
-                  ),
+                    );
+                  },
                 ),
-            ],
+              );
+            },
           ),
         ),
-      ),
+      ],
     );
   }
 
-  Widget buildCard() {
-    if (currentIndex >= users.length) {
-      return SizedBox.shrink();
-    }
-
+  Widget buildDraggableCard() {
     final user = users[currentIndex];
 
-    return Card(
-      elevation: 10,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Center(
-        child: buildCardContent(user),
+    return GestureDetector(
+      onPanUpdate: (details) {
+        setState(() {
+          x += details.delta.dx;
+          y += details.delta.dy * 0.15;
+        });
+      },
+      onPanEnd: (_) {
+        if (x > 110) {
+          handleLike();
+        } else if (x < -110) {
+          handleNope();
+        } else {
+          setState(() {
+            x = 0;
+            y = 0;
+          });
+        }
+      },
+      child: AnimatedContainer(
+        duration: Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+        transform: Matrix4.identity()
+          ..translate(x, y)
+          ..rotateZ(x / 500),
+        child: Stack(
+          children: [
+            buildCardContent(user),
+            if (x > 20)
+              Positioned(
+                top: 20,
+                left: 20,
+                child: buildStamp("LIKE", Colors.green),
+              ),
+            if (x < -20)
+              Positioned(
+                top: 20,
+                right: 20,
+                child: buildStamp("NOPE", Colors.red),
+              ),
+          ],
+        ),
       ),
     );
   }
 
   Widget buildCardAt(int index, {double scale = 1}) {
-    final user = users[index];
-
     return Transform.scale(
       scale: scale,
-      child: Card(
-        elevation: 10,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Center(
-          child: buildCardContent(user),
+      child: buildCardContent(users[index]),
+    );
+  }
+
+  Widget buildCardContent(Map<String, dynamic> user) {
+    return Container(
+      width: 330,
+      height: 510,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(26),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black12,
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+            child: Image.network(
+              user['image'],
+              height: 290,
+              width: double.infinity,
+              fit: BoxFit.cover,
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        "${user['name']}, ${user['age']}",
+                        style: TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    Icon(Icons.verified, color: Colors.pink),
+                  ],
+                ),
+                SizedBox(height: 6),
+                Text(
+                  "${user['city']} • ${user['vibe']}",
+                  style: TextStyle(color: Colors.black54, fontSize: 15),
+                ),
+                SizedBox(height: 12),
+                Text(
+                  user['bio'],
+                  style: TextStyle(fontSize: 16, height: 1.35),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildActionButton({
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.white,
+      shape: CircleBorder(),
+      elevation: 4,
+      child: InkWell(
+        customBorder: CircleBorder(),
+        onTap: onTap,
+        child: Padding(
+          padding: EdgeInsets.all(18),
+          child: Icon(icon, color: color, size: 28),
         ),
       ),
     );
   }
 
-  Widget buildCardContent(dynamic user) {
+  Widget buildStamp(String label, Color color) {
     return Container(
-      width: 300,
-      height: 400,
-      padding: EdgeInsets.all(16),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          CircleAvatar(
-            radius: 50,
-            backgroundImage: NetworkImage(
-              user['image'] ?? "https://i.pravatar.cc/300?img=1",
-            ),
-          ),
-          SizedBox(height: 20),
-          Text(
-            "${user['name'] ?? 'Unknown'}, ${user['age'] ?? 'N/A'}",
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-          ),
-          SizedBox(height: 10),
-          Text("Oslo 🌍"),
-        ],
+      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        border: Border.all(color: color, width: 3),
+        borderRadius: BorderRadius.circular(10),
+        color: Colors.white.withOpacity(0.92),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.bold,
+          fontSize: 22,
+        ),
       ),
     );
   }
@@ -296,10 +431,19 @@ class _ChatPageState extends State<ChatPage> {
   List<Map<String, dynamic>> messages = [];
   TextEditingController controller = TextEditingController();
 
-  void sendMessage() async {
-    if (controller.text.isEmpty) return;
+  @override
+  void initState() {
+    super.initState();
+    messages.add({
+      "text": "Hei 😏 Jeg er ${widget.name}. Skal vi se om vi har vibe?",
+      "isMe": false,
+    });
+  }
 
-    String userText = controller.text;
+  void sendMessage() async {
+    if (controller.text.trim().isEmpty) return;
+
+    String userText = controller.text.trim();
 
     setState(() {
       messages.add({
@@ -307,7 +451,7 @@ class _ChatPageState extends State<ChatPage> {
         "isMe": true,
       });
       messages.add({
-        "text": "Alex skriver...",
+        "text": "${widget.name} skriver...",
         "isTyping": true,
         "isMe": false,
       });
@@ -338,37 +482,32 @@ class _ChatPageState extends State<ChatPage> {
     return replies.first;
   }
 
-  Future<String> sendToAI(String prompt) async {
-    final response = await http.post(
-      Uri.parse('http://10.0.2.2:8000/ai'),
-      headers: {"Content-Type": "application/json"},
-      body: jsonEncode({"prompt": prompt}),
-    );
-
-    final data = jsonDecode(response.body);
-    return data["result"];
-  }
-
   Future<String> getRealAIResponse(String userMessage) async {
-    return sendToAI(userMessage);
+    return await sendToAI(
+      "Du er ${widget.name} i en datingchat. Svar naturlig og kort på: $userMessage",
+    );
   }
 
   void autoReply(String userMessage) async {
-    final aiFuture = getRealAIResponse(userMessage);
-
     final fakeTypingDelay = Duration(
-      milliseconds: 6000 + Random().nextInt(4000),
+      milliseconds: 4500 + Random().nextInt(3500),
     );
     await Future.delayed(fakeTypingDelay);
 
-    final reply = await aiFuture;
+    String reply;
+    try {
+      reply = await getRealAIResponse(userMessage);
+    } catch (_) {
+      reply = "Oops 😅 Jeg datt litt ut der. Send igjen?";
+    }
+
     if (!mounted) return;
 
     setState(() {
       messages.removeWhere((m) => m["isTyping"] == true);
 
       messages.add({
-        "from": "alex",
+        "from": widget.name.toLowerCase(),
         "text": reply,
         "isMe": false,
       });
@@ -395,44 +534,91 @@ class _ChatPageState extends State<ChatPage> {
           Expanded(
             child: ListView(
               controller: scrollController,
-              reverse: true, // 👈 VIKTIG
+              reverse: true,
+              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               children: messages.reversed.map((msg) {
+                final isMe = msg["isMe"] == true;
+
                 return Align(
                   alignment:
-                      msg["isMe"] ? Alignment.centerRight : Alignment.centerLeft,
+                      isMe ? Alignment.centerRight : Alignment.centerLeft,
                   child: Container(
-                    margin: EdgeInsets.symmetric(vertical: 5, horizontal: 10),
-                    padding: EdgeInsets.all(12),
+                    margin: EdgeInsets.symmetric(vertical: 4),
+                    padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    constraints: BoxConstraints(maxWidth: 280),
                     decoration: BoxDecoration(
-                      color: msg["isMe"] ? Colors.pink[200] : Colors.grey[300],
-                      borderRadius: BorderRadius.circular(20),
+                      gradient: isMe
+                          ? LinearGradient(
+                              colors: [
+                                Colors.pink.shade400,
+                                Colors.deepPurple.shade300,
+                              ],
+                            )
+                          : null,
+                      color: isMe ? null : Colors.grey.shade200,
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(18),
+                        topRight: Radius.circular(18),
+                        bottomLeft: Radius.circular(isMe ? 18 : 6),
+                        bottomRight: Radius.circular(isMe ? 6 : 18),
+                      ),
                     ),
-                    child: Text(msg["text"]),
+                    child: Text(
+                      msg["text"],
+                      style: TextStyle(
+                        color: isMe ? Colors.white : Colors.black87,
+                        fontSize: 15,
+                        height: 1.35,
+                      ),
+                    ),
                   ),
                 );
               }).toList(),
             ),
           ),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: controller,
-                  textInputAction: TextInputAction.send,
-                  decoration: InputDecoration(
-                    hintText: "Skriv melding...",
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(12, 4, 12, 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: controller,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (_) => sendMessage(),
+                      decoration: InputDecoration(
+                        hintText: "Skriv melding...",
+                        filled: true,
+                        fillColor: Colors.white,
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(24),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
                   ),
-                  onSubmitted: (value) {
-                    sendMessage();
-                  },
-                ),
+                  SizedBox(width: 8),
+                  Material(
+                    color: Colors.pink,
+                    borderRadius: BorderRadius.circular(24),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(24),
+                      onTap: sendMessage,
+                      child: Padding(
+                        padding: EdgeInsets.all(12),
+                        child: Icon(Icons.send, color: Colors.white),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              IconButton(
-                icon: Icon(Icons.send),
-                onPressed: sendMessage,
-              )
-            ],
-          )
+            ),
+          ),
         ],
       ),
     );
